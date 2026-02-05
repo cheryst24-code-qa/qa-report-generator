@@ -10,23 +10,11 @@ import io
 import pdfkit
 import os
 
-# === Настройка PDF для Windows ===
+# === Настройка PDF для облака ===
 try:
-    # Пытаемся использовать системную конфигурацию
     config = pdfkit.configuration()
 except:
-    # Если pdfkit недоступен, отключаем PDF-функциональность
     config = None
-
-# WKHTMLTOPDF_PATH = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
-
-# if not os.path.exists(WKHTMLTOPDF_PATH):
-#    raise FileNotFoundError(
-#        f"❌ wkhtmltopdf не найден по пути: {WKHTMLTOPDF_PATH}\n"
-#        "Убедитесь, что установлен wkhtmltopdf (а не только wkhtmltox)."
-#    )
-
-config = pdfkit.configuration(wkhtmltopdf=WKHTMLTOPDF_PATH)
 
 def set_col_width(col, width_twips):
     """Устанавливает ширину колонки в таблице DOCX"""
@@ -445,7 +433,7 @@ with st.form("main_form"):
         os_platform = st.text_input("ОС / Платформа", "Android 15")
         build = st.text_input("Сборка", "lemanna-pro_241006.001.apk")
     with col4:
-        env_url = st.text_input("URL стенда", "https://test.lemanna.pro    ")
+        env_url = st.text_input("URL стенда", "https://test.lemanna.pro      ")
         tools = st.text_input("Инструменты", "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)")
         methodology = st.text_input("Методология", "Ручное функциональное тестирование + проверка безопасности")
 
