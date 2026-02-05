@@ -7,14 +7,16 @@ from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml.shared import OxmlElement, qn
 import matplotlib.pyplot as plt
 import io
-import pdfkit
+import tempfile
 import os
 
-# === Настройка PDF для облака ===
-try:
-    config = pdfkit.configuration()
-except:
-    config = None
+# === Импорты ReportLab ===
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, Spacer, PageBreak
+from reportlab.platypus import Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.lib import colors
 
 def set_col_width(col, width_twips):
     """Устанавливает ширину колонки в таблице DOCX"""
@@ -188,36 +190,64 @@ def generate_docx(data, module_data_list, defects_df):
     return buffer
 
 def generate_pdf(data, module_data_list, defects_df):
-    """Генерирует PDF через HTML-промежуточное представление"""
-    import base64
-    
-    # Проверяем, доступна ли конфигурация
-    if config is None:
-        raise Exception("PDF-генерация недоступна")
-    
-    total = data['total_tc']
-    pass_count = data['pass']
-    fail_count = data['fail']
-    
-    pass_pct = (pass_count / total * 100) if total > 0 else 0
-    fail_pct = (fail_count / total * 100) if total > 0 else 0
+    """Генерирует PDF через ReportLab"""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = []
 
-    # === Диаграмма 1: PASS/FAIL ===
+    # Заголовок
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        alignment=1,  # Center
+        spaceAfter=12
+    )
+    story.append(Paragraph(data["report_title"], title_style))
+    story.append(Spacer(1, 12))
+
+    # Информационные поля
+    info_text = f"""<b>Проект:</b> {data["project"]}<br/>
+    <b>Тип приложения:</b> {data["app_type"]}<br/>
+    <b>Версия приложения:</b> {data["version"]}<br/>
+    <b>Период тестирования:</b> {data["test_period"]}<br/>
+    <b>Дата формирования отчёта:</b> {data["report_date"]}<br/>
+    <b>Тест-инженер:</b> {data["engineer"]}
+    """
+    story.append(Paragraph(info_text, styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Краткое резюме
+    story.append(Paragraph('1. КРАТКОЕ РЕЗЮМЕ', styles['Heading2']))
+    total = data['total_tc']
+    pass_pct = data['pass'] / total * 100 if total > 0 else 0
+    summary_text = f"""<b>Статус релиза:</b> {data['release_status']}<br/>
+    <b>Критические дефекты (S1):</b> {data['s1']}<br/>
+    <b>Мажорные дефекты (S2):</b> {data['s2']}<br/>
+    <b>Всего тест-кейсов:</b> {total}<br/>
+    <b>Успешно (Pass):</b> {data['pass']} ({pass_pct:.1f}%)<br/>
+    <b>Упали (Fail):</b> {data['fail']} ({(100 - pass_pct):.1f}%)<br/>
+    <b>Основной риск:</b> {data['risk']}<br/>
+    <b>Рекомендация:</b> {data['recommendation']}
+    """
+    story.append(Paragraph(summary_text, styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Диаграммы (сохраняем во временный файл)
+    # 1. PASS/FAIL Pie Chart
     fig, ax = plt.subplots(figsize=(5, 4))
-    ax.pie([pass_count, fail_count], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
+    ax.pie([data['pass'], data['fail']], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
            colors=['#4CAF50', '#F44336'], startangle=90)
     ax.set_title('Рис. 1. Распределение результатов тест-кейсов')
     
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-    buf.seek(0)
-    img_data = buf.read()
-    plt.close()
-    
-    img_base64 = base64.b64encode(img_data).decode()
-    chart1_img = f'<img src="data:image/png;base64,{img_base64}" style="width:50%; display:block; margin:10px 0;">'
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
+        plt.savefig(tmp_file.name, format='png', dpi=150, bbox_inches='tight')
+        plt.close()
+        story.append(RLImage(tmp_file.name, width=4*inch, height=3*inch))
+    story.append(Spacer(1, 12))
 
-    # === Диаграмма 2: Дефекты по серьезности ===
+    # 2. Дефекты по серьезности
     fig, ax = plt.subplots(figsize=(5, 4))
     bars = ax.bar(['Critical (S1)', 'Major (S2)'], [data['s1'], data['s2']],
                   color=['#F44336', '#FF9800'])
@@ -228,140 +258,97 @@ def generate_pdf(data, module_data_list, defects_df):
         if h > 0:
             ax.text(bar.get_x() + bar.get_width()/2, h + 0.05, str(int(h)), ha='center', va='bottom')
     
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-    buf.seek(0)
-    img_data = buf.read()
-    plt.close()
-    
-    img_base64 = base64.b64encode(img_data).decode()
-    chart2_img = f'<img src="data:image/png;base64,{img_base64}" style="width:50%; display:block; margin:10px 0;">'
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
+        plt.savefig(tmp_file.name, format='png', dpi=150, bbox_inches='tight')
+        plt.close()
+        story.append(RLImage(tmp_file.name, width=4*inch, height=3*inch))
+    story.append(Spacer(1, 12))
 
-    # Генерация HTML для таблиц модулей
-    modules_html = ""
-    for idx, module_info in enumerate(module_data_list):
-        title = module_info['title']
-        df = module_info['df']
-        modules_html += f"""
-        <h3>3.{idx+1}. {title}</h3>
-        <table>
-            <thead><tr>
-                <th style="width:15%;">ID</th>
-                <th style="width:28.33%;">Сценарий</th>
-                <th style="width:28.33%;">Статус</th>
-                <th style="width:28.33%;">Комментарий</th>
-            </tr></thead>
-            <tbody>
-                {''.join(f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>" for _, r in df.iterrows())}
-            </tbody>
-        </table>
-        """
-
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>{data["report_title"]}</title>
-        <style>
-            body {{ font-family: Times New Roman, serif; font-size: 12pt; max-width: 800px; margin: 0 auto; }}
-            h1 {{ text-align: center; }}
-            h2 {{ margin-top: 18pt; margin-bottom: 6pt; }}
-            h3 {{ margin-top: 12pt; margin-bottom: 6pt; }}
-            p {{ margin: 0 0 6pt 0; }}
-            ul, ol {{ margin: 0 0 6pt 0; padding-left: 20pt; }}
-            li {{ margin: 0 0 2pt 0; }}
-            table {{ width: 100%; border-collapse: collapse; margin: 6pt 0; }}
-            th, td {{ border: 1px solid #000; padding: 4pt; vertical-align: top; text-align: left; }}
-            th {{ background-color: #f2f2f2; }}
-            th:first-child, td:first-child {{ width: 15%; }}
-            th:nth-child(n+2), td:nth-child(n+2) {{ width: 28.33%; }}
-        </style>
-    </head>
-    <body>
-        <h1>{data["report_title"]}</h1>
-        
-        <p><strong>Проект:</strong> {data["project"]}<br>
-        <strong>Тип приложения:</strong> {data["app_type"]}<br>
-        <strong>Версия приложения:</strong> {data["version"]}<br>
-        <strong>Период тестирования:</strong> {data["test_period"]}<br>
-        <strong>Дата формирования отчёта:</strong> {data["report_date"]}<br>
-        <strong>Тест-инженер:</strong> {data["engineer"]}</p>
-
-        <h2>1. КРАТКОЕ РЕЗЮМЕ</h2>
-        <p>Статус релиза: {data['release_status']}<br>
-        Критические дефекты (S1): {data['s1']}<br>
-        Мажорные дефекты (S2): {data['s2']}<br>
-        Всего тест-кейсов: {total}<br>
-        Успешно (Pass): {pass_count} ({pass_pct:.1f}%)<br>
-        Упали (Fail): {fail_count} ({fail_pct:.1f}%)<br>
-        Основной риск: {data['risk']}<br>
-        Рекомендация: {data['recommendation']}</p>
-
-        <!-- Вставляем диаграммы -->
-        {chart1_img}
-        {chart2_img}
-
-        <h2>2. КОНТЕКСТ ТЕСТИРОВАНИЯ</h2>
-        <p>Устройство / Браузер: {data['device_browser']}<br>
-        ОС / Платформа: {data['os_platform']}<br>
-        Сборка / Версия: {data['build']}<br>
-        Стенд: Тестовое окружение (адрес: {data['env_url']})<br>
-        Инструменты: {data['tools']}<br>
-        Методология: {data['methodology']}</p>
-
-        <h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>
-        {modules_html}
-
-        <h2>4. АНАЛИЗ ДЕФЕКТОВ</h2>
-        <table>
-            <thead><tr>
-                <th style="width:15%;">ID</th>
-                <th style="width:15%;">Модуль</th>
-                <th style="width:40%;">Заголовок</th>
-                <th style="width:15%;">Серьёзность</th>
-                <th style="width:15%;">Статус</th>
-            </tr></thead>
-            <tbody>
-                {''.join(f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td><td>{r[4]}</td></tr>" for _, r in defects_df.iterrows())}
-            </tbody>
-        </table>
-        <p><strong>Последствия:</strong><br>{data['consequences'].replace(chr(10), '<br>')}</p>
-
-        <h2>5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ</h2>
-        <ul>
-            {''.join(f'<li>{line.strip()}</li>' for line in data['limitations'].strip().split(chr(10)) if line.strip())}
-        </ul>
-
-        <h2>6. ВЫВОД И РЕКОМЕНДАЦИИ</h2>
-        <p><strong>Вывод:</strong><br>{data['conclusion']}</p>
-        <p><strong>Рекомендации:</strong></p>
-        <ul>
-            {''.join(f'<li>{line.strip()}</li>' for line in data['recommendations_detailed'].strip().split(chr(10)) if line.strip())}
-        </ul>
-
-        <h2>7. ПОДПИСЬ</h2>
-        <p>Роль: {data['role']}<br>
-        ФИО: {data['fullname']}<br>
-        Дата: {data['signature_date']}</p>
-    </body>
-    </html>
+    # Контекст тестирования
+    story.append(Paragraph('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', styles['Heading2']))
+    context_text = f"""<b>Устройство / Браузер:</b> {data['device_browser']}<br/>
+    <b>ОС / Платформа:</b> {data['os_platform']}<br/>
+    <b>Сборка / Версия:</b> {data['build']}<br/>
+    <b>Стенд:</b> Тестовое окружение (адрес: {data['env_url']})<br/>
+    <b>Инструменты:</b> {data['tools']}<br/>
+    <b>Методология:</b> {data['methodology']}
     """
+    story.append(Paragraph(context_text, styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Модули
+    story.append(Paragraph('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', styles['Heading2']))
+    for idx, module_info in enumerate(module_data_list):
+        story.append(Paragraph(f'3.{idx+1}. {module_info["title"]}', styles['Heading3']))
+        
+        # Преобразуем DataFrame в список списков
+        table_data = [module_info['df'].columns.tolist()]
+        for _, row in module_info['df'].iterrows():
+            table_data.append(row.tolist())
+        
+        t = Table(table_data)
+        t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
+        t.setStyle(('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke))
+        t.setStyle(('ALIGN', (0, 0), (-1, -1), 'CENTER'))
+        t.setStyle(('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'))
+        t.setStyle(('FONTSIZE', (0, 0), (-1, 0), 8))
+        t.setStyle(('BOTTOMPADDING', (0, 0), (-1, 0), 12))
+        t.setStyle(('BACKGROUND', (0, 1), (-1, -1), colors.beige))
+        t.setStyle(('GRID', (0, 0), (-1, -1), 1, colors.black))
+        
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+    # Анализ дефектов
+    story.append(Paragraph('4. АНАЛИЗ ДЕФЕКТОВ', styles['Heading2']))
     
-    options = {
-        'page-size': 'A4',
-        'margin-top': '0.75in',
-        'margin-right': '0.75in',
-        'margin-bottom': '0.75in',
-        'margin-left': '0.75in',
-        'encoding': "UTF-8",
-        'no-outline': None
-    }
-    pdf_buffer = io.BytesIO()
-    pdf_bytes = pdfkit.from_string(html, False, options=options, configuration=config)
-    pdf_buffer.write(pdf_bytes)
-    pdf_buffer.seek(0)
-    return pdf_buffer
+    defects_data = [defects_df.columns.tolist()]
+    for _, row in defects_df.iterrows():
+        defects_data.append(row.tolist())
+    
+    t = Table(defects_data)
+    t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
+    t.setStyle(('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke))
+    t.setStyle(('ALIGN', (0, 0), (-1, -1), 'CENTER'))
+    t.setStyle(('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'))
+    t.setStyle(('FONTSIZE', (0, 0), (-1, 0), 8))
+    t.setStyle(('BOTTOMPADDING', (0, 0), (-1, 0), 12))
+    t.setStyle(('BACKGROUND', (0, 1), (-1, -1), colors.beige))
+    t.setStyle(('GRID', (0, 0), (-1, -1), 1, colors.black))
+    
+    story.append(t)
+    story.append(Paragraph('Последствия:', styles['Normal']))
+    story.append(Paragraph(data['consequences'], styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Ограничения
+    story.append(Paragraph('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', styles['Heading2']))
+    for line in data['limitations'].split('\n'):
+        if line.strip():
+            story.append(Paragraph(f"• {line.strip()}", styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Вывод и рекомендации
+    story.append(Paragraph('6. ВЫВОД И РЕКОМЕНДАЦИИ', styles['Heading2']))
+    story.append(Paragraph('Вывод:', styles['Normal']))
+    story.append(Paragraph(data['conclusion'], styles['Normal']))
+    story.append(Paragraph('Рекомендации:', styles['Normal']))
+    for line in data['recommendations_detailed'].split('\n'):
+        if line.strip():
+            story.append(Paragraph(f"• {line.strip()}", styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Подпись
+    story.append(Paragraph('7. ПОДПИСЬ', styles['Heading2']))
+    signature_text = f"""<b>Роль:</b> {data['role']}<br/>
+    <b>ФИО:</b> {data['fullname']}<br/>
+    <b>Дата:</b> {data['signature_date']}
+    """
+    story.append(Paragraph(signature_text, styles['Normal']))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
 
 # === Данные по умолчанию ===
 default_modules = [
