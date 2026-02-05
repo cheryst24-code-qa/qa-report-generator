@@ -246,30 +246,7 @@ def generate_pdf(data, module_data_list, defects_df):
     story.append(Paragraph(context_text, styles['Normal']))
     story.append(Spacer(1, 12))
 
-    # Модули
-    story.append(Paragraph('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', styles['Heading2']))
-    for idx, module_info in enumerate(module_data_list):
-        story.append(Paragraph(f'3.{idx+1}. {module_info["title"]}', styles['Heading3']))
-        
-        # Преобразуем DataFrame в список списков
-        table_data = [module_info['df'].columns.tolist()]
-        for row in module_info['df'].values:
-            table_data.append(list(row))
-        
-        t = Table(table_data)
-        t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
-        t.setStyle(('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke))
-        t.setStyle(('ALIGN', (0, 0), (-1, -1), 'CENTER'))
-        t.setStyle(('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'))
-        t.setStyle(('FONTSIZE', (0, 0), (-1, 0), 8))
-        t.setStyle(('BOTTOMPADDING', (0, 0), (-1, 0), 12))
-        t.setStyle(('BACKGROUND', (0, 1), (-1, -1), colors.beige))
-        t.setStyle(('GRID', (0, 0), (-1, -1), 1, colors.black))
-        
-        story.append(t)
-        story.append(Spacer(1, 12))
-
-    # Анализ дефектов
+    # Анализ дефектов (без циклов по module_data_list)
     story.append(Paragraph('4. АНАЛИЗ ДЕФЕКТОВ', styles['Heading2']))
     
     defects_data = [defects_df.columns.tolist()]
