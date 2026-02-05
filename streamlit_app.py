@@ -283,8 +283,8 @@ def generate_pdf(data, module_data_list, defects_df):
         
         # Преобразуем DataFrame в список списков
         table_data = [module_info['df'].columns.tolist()]
-        for _, row in module_info['df'].iterrows():
-            table_data.append(row.tolist())
+        for row in module_info['df'].values:
+            table_data.append(list(row))
         
         t = Table(table_data)
         t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
@@ -303,8 +303,8 @@ def generate_pdf(data, module_data_list, defects_df):
     story.append(Paragraph('4. АНАЛИЗ ДЕФЕКТОВ', styles['Heading2']))
     
     defects_data = [defects_df.columns.tolist()]
-    for _, row in defects_df.iterrows():
-        defects_data.append(row.tolist())
+    for row in defects_df.values:
+        defects_data.append(list(row))
     
     t = Table(defects_data)
     t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
