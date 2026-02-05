@@ -196,7 +196,7 @@ def generate_pdf(data, module_data_list, defects_df):
     styles = getSampleStyleSheet()
     story = []
 
-    # Только заголовок
+    # Заголовок
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -205,9 +205,116 @@ def generate_pdf(data, module_data_list, defects_df):
         spaceAfter=12
     )
     story.append(Paragraph(data["report_title"], title_style))
+    story.append(Spacer(1, 12))
+
+    # Информационные поля
+    info_text = f"""<b>Проект:</b> {data["project"]}<br/>
+    <b>Тип приложения:</b> {data["app_type"]}<br/>
+    <b>Версия приложения:</b> {data["version"]}<br/>
+    <b>Период тестирования:</b> {data["test_period"]}<br/>
+    <b>Дата формирования отчёта:</b> {data["report_date"]}<br/>
+    <b>Тест-инженер:</b> {data["engineer"]}
+    """
+    story.append(Paragraph(info_text, styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Краткое резюме
+    story.append(Paragraph('1. КРАТКОЕ РЕЗЮМЕ', styles['Heading2']))
+    total = data['total_tc']
+    pass_pct = data['pass'] / total * 100 if total > 0 else 0
+    summary_text = f"""<b>Статус релиза:</b> {data['release_status']}<br/>
+    <b>Критические дефекты (S1):</b> {data['s1']}<br/>
+    <b>Мажорные дефекты (S2):</b> {data['s2']}<br/>
+    <b>Всего тест-кейсов:</b> {total}<br/>
+    <b>Успешно (Pass):</b> {data['pass']} ({pass_pct:.1f}%)<br/>
+    <b>Упали (Fail):</b> {data['fail']} ({(100 - pass_pct):.1f}%)<br/>
+    <b>Основной риск:</b> {data['risk']}<br/>
+    <b>Рекомендация:</b> {data['recommendation']}
+    """
+    story.append(Paragraph(summary_text, styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Контекст тестирования
+    story.append(Paragraph('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', styles['Heading2']))
+    context_text = f"""<b>Устройство / Браузер:</b> {data['device_browser']}<br/>
+    <b>ОС / Платформа:</b> {data['os_platform']}<br/>
+    <b>Сборка / Версия:</b> {data['build']}<br/>
+    <b>Стенд:</b> Тестовое окружение (адрес: {data['env_url']})<br/>
+    <b>Инструменты:</b> {data['tools']}<br/>
+    <b>Методология:</b> {data['methodology']}
+    """
+    story.append(Paragraph(context_text, styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Модули
+    story.append(Paragraph('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', styles['Heading2']))
+    for idx, module_info in enumerate(module_data_list):
+        story.append(Paragraph(f'3.{idx+1}. {module_info["title"]}', styles['Heading3']))
+        
+        # Преобразуем DataFrame в список списков
+        table_data = [module_info['df'].columns.tolist()]
+        for row in module_info['df'].values:
+            table_data.append(list(row))
+        
+        t = Table(table_data)
+        t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
+        t.setStyle(('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke))
+        t.setStyle(('ALIGN', (0, 0), (-1, -1), 'CENTER'))
+        t.setStyle(('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'))
+        t.setStyle(('FONTSIZE', (0, 0), (-1, 0), 8))
+        t.setStyle(('BOTTOMPADDING', (0, 0), (-1, 0), 12))
+        t.setStyle(('BACKGROUND', (0, 1), (-1, -1), colors.beige))
+        t.setStyle(('GRID', (0, 0), (-1, -1), 1, colors.black))
+        
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+    # Анализ дефектов
+    story.append(Paragraph('4. АНАЛИЗ ДЕФЕКТОВ', styles['Heading2']))
     
-    # Просто текст
-    story.append(Paragraph("Тестовый PDF", styles['Normal']))
+    defects_data = [defects_df.columns.tolist()]
+    for row in defects_df.values:
+        defects_data.append(list(row))
+    
+    t = Table(defects_data)
+    t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
+    t.setStyle(('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke))
+    t.setStyle(('ALIGN', (0, 0), (-1, -1), 'CENTER'))
+    t.setStyle(('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'))
+    t.setStyle(('FONTSIZE', (0, 0), (-1, 0), 8))
+    t.setStyle(('BOTTOMPADDING', (0, 0), (-1, 0), 12))
+    t.setStyle(('BACKGROUND', (0, 1), (-1, -1), colors.beige))
+    t.setStyle(('GRID', (0, 0), (-1, -1), 1, colors.black))
+    
+    story.append(t)
+    story.append(Paragraph('Последствия:', styles['Normal']))
+    story.append(Paragraph(data['consequences'], styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Ограничения
+    story.append(Paragraph('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', styles['Heading2']))
+    for line in data['limitations'].split('\n'):
+        if line.strip():
+            story.append(Paragraph(f"• {line.strip()}", styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Вывод и рекомендации
+    story.append(Paragraph('6. ВЫВОД И РЕКОМЕНДАЦИИ', styles['Heading2']))
+    story.append(Paragraph('Вывод:', styles['Normal']))
+    story.append(Paragraph(data['conclusion'], styles['Normal']))
+    story.append(Paragraph('Рекомендации:', styles['Normal']))
+    for line in data['recommendations_detailed'].split('\n'):
+        if line.strip():
+            story.append(Paragraph(f"• {line.strip()}", styles['Normal']))
+    story.append(Spacer(1, 12))
+
+    # Подпись
+    story.append(Paragraph('7. ПОДПИСЬ', styles['Heading2']))
+    signature_text = f"""<b>Роль:</b> {data['role']}<br/>
+    <b>ФИО:</b> {data['fullname']}<br/>
+    <b>Дата:</b> {data['signature_date']}
+    """
+    story.append(Paragraph(signature_text, styles['Normal']))
 
     doc.build(story)
     buffer.seek(0)
