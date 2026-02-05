@@ -248,15 +248,12 @@ def generate_pdf(data, module_data_list, defects_df):
 
     # Анализ дефектов
     story.append(Paragraph('4. АНАЛИЗ ДЕФЕКТОВ', styles['Heading2']))
-    
+
     # Создаем таблицу из defects_df
     table_data = [defects_df.columns.tolist()]  # Заголовки
-    for i in range(len(defects_df)):
-        row = []
-        for col in defects_df.columns:
-            row.append(str(defects_df.iloc[i][col]))
-        table_data.append(row)
-    
+    for row in defects_df.itertuples(index=False, name=None):
+        table_data.append(list(row))
+
     t = Table(table_data)
     t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
     t.setStyle(('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke))
@@ -266,7 +263,7 @@ def generate_pdf(data, module_data_list, defects_df):
     t.setStyle(('BOTTOMPADDING', (0, 0), (-1, 0), 12))
     t.setStyle(('BACKGROUND', (0, 1), (-1, -1), colors.beige))
     t.setStyle(('GRID', (0, 0), (-1, -1), 1, colors.black))
-    
+
     story.append(t)
     story.append(Paragraph('Последствия:', styles['Normal']))
     story.append(Paragraph(data['consequences'], styles['Normal']))
