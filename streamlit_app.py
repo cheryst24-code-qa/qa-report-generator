@@ -246,28 +246,6 @@ def generate_pdf(data, module_data_list, defects_df):
     story.append(Paragraph(context_text, styles['Normal']))
     story.append(Spacer(1, 12))
 
-    # Анализ дефектов
-    story.append(Paragraph('4. АНАЛИЗ ДЕФЕКТОВ', styles['Heading2']))
-    
-    defects_data = [defects_df.columns.tolist()]
-    for _, row in defects_df.iterrows():  # <-- Вот тут!
-        defects_data.append(row.tolist())
-    
-    t = Table(defects_data)
-    t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
-    t.setStyle(('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke))
-    t.setStyle(('ALIGN', (0, 0), (-1, -1), 'CENTER'))
-    t.setStyle(('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'))
-    t.setStyle(('FONTSIZE', (0, 0), (-1, 0), 8))
-    t.setStyle(('BOTTOMPADDING', (0, 0), (-1, 0), 12))
-    t.setStyle(('BACKGROUND', (0, 1), (-1, -1), colors.beige))
-    t.setStyle(('GRID', (0, 0), (-1, -1), 1, colors.black))
-    
-    story.append(t)
-    story.append(Paragraph('Последствия:', styles['Normal']))
-    story.append(Paragraph(data['consequences'], styles['Normal']))
-    story.append(Spacer(1, 12))
-
     # Ограничения
     story.append(Paragraph('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', styles['Heading2']))
     for line in data['limitations'].split('\n'):
