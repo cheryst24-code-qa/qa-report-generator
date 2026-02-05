@@ -201,7 +201,7 @@ def generate_pdf(data, module_data_list, defects_df):
         'CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        alignment=1,  # Center
+        alignment=1,
         spaceAfter=12
     )
     story.append(Paragraph(data["report_title"], title_style))
@@ -232,36 +232,6 @@ def generate_pdf(data, module_data_list, defects_df):
     <b>Рекомендация:</b> {data['recommendation']}
     """
     story.append(Paragraph(summary_text, styles['Normal']))
-    story.append(Spacer(1, 12))
-
-    # Диаграммы (сохраняем во временный файл)
-    # 1. PASS/FAIL Pie Chart
-    fig, ax = plt.subplots(figsize=(5, 4))
-    ax.pie([data['pass'], data['fail']], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
-        colors=['#4CAF50', '#F44336'], startangle=90)
-    ax.set_title('Рис. 1. Распределение результатов тест-кейсов')
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
-        plt.savefig(tmp_file.name, format='png', dpi=150, bbox_inches='tight')
-        plt.close(fig)  # Явно закрываем fig
-        story.append(RLImage(tmp_file.name, width=4*inch, height=3*inch))
-    story.append(Spacer(1, 12))
-
-    # 2. Дефекты по серьезности
-    fig, ax = plt.subplots(figsize=(5, 4))
-    bars = ax.bar(['Critical (S1)', 'Major (S2)'], [data['s1'], data['s2']],
-              color=['#F44336', '#FF9800'])
-    ax.set_title('Рис. 2. Дефекты по уровню серьёзности')
-    ax.set_ylabel('Количество')
-    for bar in bars:
-        h = bar.get_height()
-    if h > 0:
-        ax.text(bar.get_x() + bar.get_width()/2, h + 0.05, str(int(h)), ha='center', va='bottom')
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_file:
-        plt.savefig(tmp_file.name, format='png', dpi=150, bbox_inches='tight')
-        plt.close(fig)  # Явно закрываем fig
-        story.append(RLImage(tmp_file.name, width=4*inch, height=3*inch))
     story.append(Spacer(1, 12))
 
     # Контекст тестирования
