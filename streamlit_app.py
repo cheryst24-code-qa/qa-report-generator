@@ -11,13 +11,20 @@ import pdfkit
 import os
 
 # === Настройка PDF для Windows ===
-WKHTMLTOPDF_PATH = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
+try:
+    # Пытаемся использовать системную конфигурацию
+    config = pdfkit.configuration()
+except:
+    # Если pdfkit недоступен, отключаем PDF-функциональность
+    config = None
 
-if not os.path.exists(WKHTMLTOPDF_PATH):
-    raise FileNotFoundError(
-        f"❌ wkhtmltopdf не найден по пути: {WKHTMLTOPDF_PATH}\n"
-        "Убедитесь, что установлен wkhtmltopdf (а не только wkhtmltox)."
-    )
+# WKHTMLTOPDF_PATH = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
+
+# if not os.path.exists(WKHTMLTOPDF_PATH):
+#    raise FileNotFoundError(
+#        f"❌ wkhtmltopdf не найден по пути: {WKHTMLTOPDF_PATH}\n"
+#        "Убедитесь, что установлен wkhtmltopdf (а не только wkhtmltox)."
+#    )
 
 config = pdfkit.configuration(wkhtmltopdf=WKHTMLTOPDF_PATH)
 
@@ -196,6 +203,10 @@ def generate_pdf(data, module_data_list, defects_df):
     """Генерирует PDF через HTML-промежуточное представление"""
     import base64
     
+    # Проверяем, доступна ли конфигурация
+    if config is None:
+        raise Exception("PDF-генерация недоступна")
+    
     total = data['total_tc']
     pass_count = data['pass']
     fail_count = data['fail']
@@ -215,7 +226,6 @@ def generate_pdf(data, module_data_list, defects_df):
     img_data = buf.read()
     plt.close()
     
-    # Кодируем изображение в base64
     img_base64 = base64.b64encode(img_data).decode()
     chart1_img = f'<img src="data:image/png;base64,{img_base64}" style="width:50%; display:block; margin:10px 0;">'
 
