@@ -246,12 +246,12 @@ def generate_pdf(data, module_data_list, defects_df):
     story.append(Paragraph(context_text, styles['Normal']))
     story.append(Spacer(1, 12))
 
-    # Анализ дефектов (без циклов по module_data_list)
+    # Анализ дефектов
     story.append(Paragraph('4. АНАЛИЗ ДЕФЕКТОВ', styles['Heading2']))
     
     defects_data = [defects_df.columns.tolist()]
-    for row in defects_df.values:
-        defects_data.append(list(row))
+    for _, row in defects_df.iterrows():  # <-- Вот тут!
+        defects_data.append(row.tolist())
     
     t = Table(defects_data)
     t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
