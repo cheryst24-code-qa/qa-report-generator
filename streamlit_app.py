@@ -549,13 +549,16 @@ def generate_html_report(data, module_data_list, defects_df):
     """
     
     # Модули
+    # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
     html += "<h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>"
     for idx, module_info in enumerate(module_data_list):
         html += f"<h3>3.{idx+1}. {escape_html(module_info['title'])}</h3>"
-        html += '<table><tr><th style="width: 15%;">ID</th><th>Сценарий</th><th style="width: 12%;">Статус</th><th>Комментарий</th></tr>'
+        # Исправленные ширины колонок: Сценарий увеличен до 45%, Комментарий уменьшен до 28%
+        html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 45%;">Сценарий</th><th style="width: 12%;">Статус</th><th style="width: 28%;">Комментарий</th></tr>'
         df = module_info['df']
         if not df.empty:
             for _, row in df.iterrows():
+                # Определяем CSS-класс для цветового выделения статуса
                 status_class = "status-pass" if str(row[2]).upper() == "PASS" else "status-fail" if str(row[2]).upper() == "FAIL" else ""
                 html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td class='{status_class}'>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td></tr>"
         else:
@@ -1047,7 +1050,7 @@ with st.form("main_form"):
     signature_date = st.text_input("Дата", "30.11.2025")
     
     submitted = st.form_submit_button("📥 Создать отчёт", type="primary")
-    
+
 # === ГЕНЕРАЦИЯ ОТЧЁТА ===
 if submitted:
     validation_errors = []
