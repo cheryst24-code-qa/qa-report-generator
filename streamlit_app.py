@@ -584,14 +584,13 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws.title = "Отчёт о тестировании"  # type: ignore
     
     # === ЕДИНЫЕ ШИРИНЫ ДЛЯ ВСЕГО ЛИСТА (оптимизировано под все секции) ===
-    # Расчёт основан на анализе контента: модули (18), ID (12), сценарии (38), статусы (13), комментарии (50)
     COL_WIDTHS = {
         'A': 18,  # Модуль / Параметр / Метрика
         'B': 14,  # ID / Значение (короткое)
         'C': 38,  # Сценарий / Заголовок дефекта / Длинное значение
         'D': 13,  # Статус / Серьёзность
         'E': 50,  # Комментарий / Описание
-        'F': 2    # Минимальная ширина для объединённых заголовков (не используется для данных)
+        'F': 2    # Минимальная ширина для объединённых заголовков
     }
     
     # Стили
@@ -612,7 +611,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     
     row = 1
     
-    # === ЗАГОЛОВОК (объединяем все 6 колонок) ===
+    # === ЗАГОЛОВОК ===
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     cell = ws[f'A{row}']  # type: ignore
     cell.value = data["report_title"]
@@ -621,7 +620,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     cell.alignment = Alignment(horizontal="center", vertical="center")  # type: ignore
     row += 2
     
-    # === СВОДКА (4 колонки: Метрика | Значение | Метрика2 | Значение2) ===
+    # === СВОДКА ===
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     ws[f'A{row}'].value = "📊 КЛЮЧЕВЫЕ МЕТРИКИ"  # type: ignore
     ws[f'A{row}'].font = Font(bold=True, size=12, color="FFFFFF")  # type: ignore
@@ -629,7 +628,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws[f'A{row}'].alignment = Alignment(horizontal="center")  # type: ignore
     row += 1
     
-    # Единая структура: 4 колонки (A-D), E-F пустые для выравнивания
     summary_data = [
         ["Проект", data["project"], "Всего тестов", f"{data['total_tc']}"],
         ["Версия", data["version"], "PASS", f"{data['pass']} ({data['pass']/data['total_tc']*100:.1f}%)"],
@@ -638,7 +636,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ["Major (S2)", str(data["s2"]), "Рекомендация", data["recommendation"]],
     ]
     
-    for summary_row in summary_
+    for summary_row in summary_data:
         for col_idx, value in enumerate(summary_row, start=1):
             cell = ws.cell(row=row, column=col_idx, value=value)  # type: ignore
             cell.border = thin_border  # type: ignore
@@ -654,7 +652,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         row += 1
     row += 1
     
-    # === КОНТЕКСТ (2 колонки: Параметр | Значение) ===
+    # === КОНТЕКСТ ===
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     ws[f'A{row}'].value = "⚙️ КОНТЕКСТ ТЕСТИРОВАНИЯ"  # type: ignore
     ws[f'A{row}'].font = Font(bold=True, size=12, color="FFFFFF")  # type: ignore
@@ -673,15 +671,14 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ["Дата формирования", data["report_date"]],
     ]
     
-    for label, value in context_
-        # Используем колонки A (метрика) и C (значение) для лучшего выравнивания с другими секциями
+    for label, value in context_data:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)  # type: ignore
         ws.cell(row=row, column=1, value=label).border = thin_border  # type: ignore
         ws.cell(row=row, column=3, value=value).border = thin_border  # type: ignore
         row += 1
     row += 1
     
-    # === РЕЗУЛЬТАТЫ ТЕСТОВ (5 колонок) ===
+    # === РЕЗУЛЬТАТЫ ТЕСТОВ ===
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     ws[f'A{row}'].value = "✅ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ"  # type: ignore
     ws[f'A{row}'].font = Font(bold=True, size=12, color="FFFFFF")  # type: ignore
@@ -689,7 +686,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws[f'A{row}'].alignment = Alignment(horizontal="center")  # type: ignore
     row += 1
     
-    # Заголовки таблицы тестов (5 колонок)
+    # Заголовки таблицы тестов
     test_headers = ["Модуль", "ID", "Сценарий", "Статус", "Комментарий"]
     for col_idx, header in enumerate(test_headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)  # type: ignore
@@ -720,7 +717,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 row += 1
     row += 1
     
-    # === ДЕФЕКТЫ (5 колонок) ===
+    # === ДЕФЕКТЫ ===
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     ws[f'A{row}'].value = "🐞 АНАЛИЗ ДЕФЕКТОВ"  # type: ignore
     ws[f'A{row}'].font = Font(bold=True, size=12, color="FFFFFF")  # type: ignore
@@ -800,7 +797,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ["Дата", data["signature_date"]],
     ]
     
-    for label, value in signature_
+    for label, value in signature_data:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)  # type: ignore
         ws.cell(row=row, column=1, value=label).border = thin_border  # type: ignore
         ws.cell(row=row, column=3, value=value).border = thin_border  # type: ignore
@@ -835,7 +832,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws.cell(row=row, column=1, value="Major (S2)").fill = major_fill  # type: ignore
     ws.cell(row=row, column=2, value=data['s2']).border = thin_border  # type: ignore
     
-    # === УСТАНОВКА ЕДИНЫХ ШИРИН КОЛОНОК ДЛЯ ВСЕГО ЛИСТА ===
+    # === УСТАНОВКА ЕДИНЫХ ШИРИН КОЛОНОК ===
     for col_letter, width in COL_WIDTHS.items():
         ws.column_dimensions[col_letter].width = width  # type: ignore
     
