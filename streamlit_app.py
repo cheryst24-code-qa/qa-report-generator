@@ -978,6 +978,15 @@ if submitted:
             )
         
         with col2:
+                 st.download_button(
+                "🌐 HTML",
+                html_buffer,
+                "Отчёт_о_тестировании.html",
+                "text/html",
+                use_container_width=True
+            )
+        
+        with col3:
             st.download_button(
                 "📊 XLSX",
                 xlsx_buffer,
@@ -985,15 +994,6 @@ if submitted:
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
                 type="secondary"
-            )
-        
-        with col3:
-            st.download_button(
-                "🌐 HTML",
-                html_buffer,
-                "Отчёт_о_тестировании.html",
-                "text/html",
-                use_container_width=True
             )
         
         st.markdown("""
