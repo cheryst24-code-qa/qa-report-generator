@@ -461,7 +461,7 @@ def generate_html_report(data, module_data_list, defects_df):
         <tr><td>Версия приложения:</td><td>{escape_html(data['version'])}</td></tr>
         <tr><td>Период тестирования:</td><td>{escape_html(data['test_period'])}</td></tr>
         <tr><td>Дата формирования отчёта:</td><td>{escape_html(data['report_date'])}</td></tr>
-        <tr><td>Тест-инженер:</td><td>{escape_html(data['engineer'])}</td></tr>
+        <tr><td>QA-инженер:</td><td>{escape_html(data['engineer'])}</td></tr>
     </table>
     
     <h2>1. КРАТКОЕ РЕЗЮМЕ</h2>
@@ -694,11 +694,11 @@ if submitted:
     if s1 < 0 or s2 < 0:
         validation_errors.append("❌ Количество дефектов не может быть отрицательным")
 
-    # Текущая валидация минимальна — можно добавить:
-if not report_title.strip():
-    validation_errors.append("❌ Название отчёта не может быть пустым")
-if pass_tc > total_tc or fail_tc > total_tc:
-    validation_errors.append("❌ Количество успешных/проваленных тестов не может превышать общее")
+    if not report_title.strip():
+        validation_errors.append("❌ Название отчёта не может быть пустым")
+        
+    if pass_tc > total_tc or fail_tc > total_tc:
+        validation_errors.append("❌ Количество успешных/проваленных тестов не может превышать общее")
     
     if validation_errors:
         for error in validation_errors:
