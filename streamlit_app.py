@@ -340,7 +340,7 @@ def generate_html_report(data, module_data_list, defects_df):
         <title>{data['report_title']}</title>
         <style>
             body {{
-                font-family: 'Times New Roman', Times, serif;
+                font-family: 'Calibri Light', Times, serif;
                 font-size: 12pt;
                 line-height: 1.5;
                 max-width: 800px;
@@ -388,7 +388,7 @@ def generate_html_report(data, module_data_list, defects_df):
             .summary-table td:first-child,
             .context-table td:first-child,
             .signature-table td:first-child {{
-                width: 25%;
+                width: 35%;
                 font-weight: bold;
                 background-color: #f9f9f9;
             }}
@@ -396,7 +396,7 @@ def generate_html_report(data, module_data_list, defects_df):
             .summary-table td:last-child,
             .context-table td:last-child,
             .signature-table td:last-child {{
-                width: 75%;
+                width: 65%;
             }}
             .status-pass {{ color: #2e7d32; font-weight: bold; }}
             .status-fail {{ color: #d32f2f; font-weight: bold; }}
@@ -605,12 +605,12 @@ default_defects = pd.DataFrame([
 st.set_page_config(page_title="Универсальный генератор QA-отчёта", layout="wide")
 st.title("📄 Универсальный генератор отчёта о тестировании")
 
-st.info("""
-✨ **Отличие от обычного HTML-отчёта:**
-- Добавлены профессиональные диаграммы (как в DOCX)
-- Фиксированная ширина колонок в таблицах (25%/75%) — как в деловом документе
-- Оптимизация для печати: при сохранении как PDF через браузер получите идентичный внешний вид
-""")
+# st.info("""
+# ✨ **Отличие от обычного HTML-отчёта:**
+# - Добавлены профессиональные диаграммы (как в DOCX)
+# - Фиксированная ширина колонок в таблицах (25%/75%) — как в деловом документе
+# - Оптимизация для печати: при сохранении как PDF через браузер получите идентичный внешний вид
+# """)
 
 # === ФОРМА ВВОДА ===
 with st.form("main_form"):
@@ -765,7 +765,7 @@ if submitted:
         
         # ИНСТРУКЦИЯ ПО КОНВЕРТАЦИИ В PDF
         st.markdown("""
-        <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #81c784;">
+        <div style="background-color: #3f403f; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #81c784;">
             <h4>🖨️ Как получить профессиональный PDF:</h4>
             <ol>
                 <li>Скачайте файл <strong>HTML</strong> (кнопка справа)</li>
@@ -780,9 +780,6 @@ if submitted:
                 </li>
                 <li>Нажмите «Сохранить» — получите отчёт с диаграммами и таблицами как в DOCX</li>
             </ol>
-            <p style="margin-top: 10px; font-style: italic; color: #1b5e20;">
-                ✅ Диаграммы и фиксированная ширина колонок (25%/75%) сохранятся в PDF без изменений
-            </p>
         </div>
         """, unsafe_allow_html=True)
             
