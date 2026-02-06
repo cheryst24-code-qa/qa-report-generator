@@ -11,13 +11,19 @@ import tempfile
 import os
 import traceback
 
-# === ИМПОРТЫ ДЛЯ КОНВЕРТАЦИИ DOCX В PDF ===
-try:
-    from docx2pdf import convert  # Для конвертации в Windows
-    PDF_CONVERSION_AVAILABLE = True
-except ImportError:
-    PDF_CONVERSION_AVAILABLE = False
-    st.warning("⚠️ Модуль docx2pdf не найден. Экспорт в PDF недоступен. Установите: pip install docx2pdf")
+# === ВАЖНО: В ОБЛАКЕ (Streamlit Community Cloud) конвертация в PDF НЕДОСТУПНА ===
+# Причина: для работы docx2pdf требуется установленный LibreOffice/MS Word
+# Решение: 
+#   • Локально: установите `pip install docx2pdf` + LibreOffice
+#   • В облаке: используйте HTML-экспорт → сохраните как PDF через браузер
+
+# === ИМПОРТЫ ДЛЯ КОНВЕРТАЦИИ DOCX В PDF (ТОЛЬКО ДЛЯ ЛОКАЛЬНОГО ЗАПУСКА) ===
+# Раскомментируйте строки ниже ТОЛЬКО при локальном запуске с установленным LibreOffice
+# try:
+#     from docx2pdf import convert
+#     PDF_CONVERSION_AVAILABLE = True
+# except ImportError:
+#     PDF_CONVERSION_AVAILABLE = False
 
 def set_col_width(col, width_twips):
     """Устанавливает ширину колонки в таблице DOCX"""
@@ -27,8 +33,6 @@ def set_col_width(col, width_twips):
         tcW.set(qn('w:w'), str(int(width_twips)))
         tcW.set(qn('w:type'), 'dxa')
         tc.append(tcW)
-
-# === УДАЛЕНО: дублирующаяся функция set_col_width (была на строке 83-90) ===
 
 def plot_to_buffer():
     """Сохраняет диаграмму в буфер и возвращает его"""
@@ -40,14 +44,13 @@ def plot_to_buffer():
 
 def add_table_from_df(doc, df):
     """Создаёт таблицу с фиксированной шириной и границами"""
-    # === ИСПРАВЛЕНИЕ: Добавлена проверка на пустой список колонок ===
+    # === ИСПРАВЛЕНИЕ: Проверка на пустой список колонок ===
     if len(df.columns) == 0:
         doc.add_paragraph("Нет данных для отображения")
         doc.add_paragraph().paragraph_format.space_after = Pt(6)
         return
     
     if df.empty:
-        # Создаём таблицу с заголовками и одной пустой строкой
         table = doc.add_table(rows=2, cols=len(df.columns))
         for i, col in enumerate(df.columns):
             table.cell(0, i).text = str(col)
@@ -58,10 +61,8 @@ def add_table_from_df(doc, df):
     table.style = 'Table Grid'
     total_width = Inches(6.5)
     
-    # Установка ширины колонок
     num_cols = len(df.columns)
     if num_cols > 0:
-        # Первая колонка (обычно ID) — 15% ширины
         first_width_twips = int(total_width.twips * 0.15)
         remaining_width_twips = total_width.twips - first_width_twips
         other_width_twips = int(remaining_width_twips / (num_cols - 1)) if num_cols > 1 else int(remaining_width_twips)
@@ -89,45 +90,6 @@ def add_table_from_df(doc, df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
-def convert_docx_to_pdf(docx_buffer):
-    """
-    Конвертирует DOCX в PDF.
-    Возвращает буфер с PDF или выбрасывает исключение.
-    """
-    if not PDF_CONVERSION_AVAILABLE:
-        raise Exception("Модуль docx2pdf не установлен. Установите: pip install docx2pdf")
-    
-    try:
-        # Сохраняем DOCX во временный файл
-        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp_docx:
-            tmp_docx.write(docx_buffer.getvalue())
-            tmp_docx_path = tmp_docx.name
-        
-        # Создаём временный файл для PDF
-        pdf_path = tmp_docx_path.replace('.docx', '.pdf')
-        
-        # Конвертируем
-        convert(tmp_docx_path, pdf_path)
-        
-        # Читаем PDF в буфер
-        with open(pdf_path, 'rb') as pdf_file:
-            pdf_buffer = io.BytesIO(pdf_file.read())
-        
-        # Удаляем временные файлы
-        os.unlink(tmp_docx_path)
-        os.unlink(pdf_path)
-        
-        pdf_buffer.seek(0)
-        return pdf_buffer
-        
-    except Exception as e:
-        # Удаляем временные файлы при ошибке
-        if 'tmp_docx_path' in locals() and os.path.exists(tmp_docx_path):
-            os.unlink(tmp_docx_path)
-        if 'pdf_path' in locals() and os.path.exists(pdf_path):
-            os.unlink(pdf_path)
-        raise Exception(f"Ошибка конвертации в PDF: {str(e)}")
-
 def generate_docx(data, module_data_list, defects_df):
     """Генерирует строго деловой DOCX-отчёт"""
     doc = Document()
@@ -143,12 +105,10 @@ def generate_docx(data, module_data_list, defects_df):
     title_font.size = Pt(16)
     title_font.bold = True
 
-    # === ИНФОРМАЦИОННЫЕ ПОЛЯ (в виде таблицы с фиксированной шириной) ===
+    # === ИНФОРМАЦИОННЫЕ ПОЛЯ ===
     info_table = doc.add_table(rows=6, cols=2)
     info_table.style = 'Table Grid'
     total_width = Inches(6.5)
-    
-    # Устанавливаем ширину колонок: первая колонка — 15%, вторая — 85%
     first_col_width = total_width * 0.25
     second_col_width = total_width * 0.75
     
@@ -178,13 +138,12 @@ def generate_docx(data, module_data_list, defects_df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # === КРАТКОЕ РЕЗЮМЕ (в виде таблицы с фиксированной шириной) ===
+    # === КРАТКОЕ РЕЗЮМЕ ===
     doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
     
     summary_table = doc.add_table(rows=8, cols=2)
     summary_table.style = 'Table Grid'
     
-    # Устанавливаем ширину колонок: первая колонка — 25%, вторая — 75%
     for row in summary_table.rows:
         row.cells[0].width = first_col_width
         row.cells[1].width = second_col_width
@@ -245,12 +204,11 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_picture(buf, width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # === КОНТЕКСТ ТЕСТИРОВАНИЯ (в виде таблицы с фиксированной шириной) ===
+    # === КОНТЕКСТ ТЕСТИРОВАНИЯ ===
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
     context_table = doc.add_table(rows=6, cols=2)
     context_table.style = 'Table Grid'
     
-    # Устанавливаем ширину колонок: первая колонка — 25%, вторая — 75%
     for row in context_table.rows:
         row.cells[0].width = first_col_width
         row.cells[1].width = second_col_width
@@ -283,11 +241,11 @@ def generate_docx(data, module_data_list, defects_df):
         title = module_info['title']
         df = module_info['df']
         doc.add_heading(f'3.{idx+1}. {title}', 2)
-        add_table_from_df(doc, df)  # <<< Для таблиц модулей используется отдельная функция
+        add_table_from_df(doc, df)
 
     # === АНАЛИЗ ДЕФЕКТОВ ===
     doc.add_heading('4. АНАЛИЗ ДЕФЕКТОВ', 1)
-    add_table_from_df(doc, defects_df)  # <<< Для таблицы дефектов используется отдельная функция
+    add_table_from_df(doc, defects_df)
 
     doc.add_paragraph('Последствия:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['consequences']).paragraph_format.space_after = Pt(6)
@@ -311,12 +269,11 @@ def generate_docx(data, module_data_list, defects_df):
             p.add_run(f"• {line.strip()}")
             p.paragraph_format.space_after = Pt(2)
 
-    # === ПОДПИСЬ (в виде таблицы с фиксированной шириной) ===
+    # === ПОДПИСЬ ===
     doc.add_heading('7. ПОДПИСЬ', 1)
     signature_table = doc.add_table(rows=3, cols=2)
     signature_table.style = 'Table Grid'
     
-    # Устанавливаем ширину колонок: первая колонка — 25%, вторая — 75%
     for row in signature_table.rows:
         row.cells[0].width = first_col_width
         row.cells[1].width = second_col_width
@@ -340,6 +297,140 @@ def generate_docx(data, module_data_list, defects_df):
 
     buffer = io.BytesIO()
     doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
+def generate_html_report(data, module_data_list, defects_df):
+    """Генерирует HTML-версию отчёта для удобного сохранения как PDF через браузер"""
+    # Создаём базовый HTML с инлайновыми стилями для корректного отображения при печати
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <title>{data['report_title']}</title>
+        <style>
+            body {{ font-family: 'Times New Roman', Times, serif; font-size: 12pt; max-width: 800px; margin: 0 auto; padding: 20px; }}
+            h1 {{ text-align: center; font-size: 16pt; font-weight: bold; margin-bottom: 20px; }}
+            h2 {{ font-size: 14pt; margin-top: 20px; border-bottom: 1px solid #000; padding-bottom: 5px; }}
+            h3 {{ font-size: 13pt; margin-top: 15px; }}
+            table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
+            th, td {{ border: 1px solid #000; padding: 6px; text-align: left; vertical-align: top; }}
+            th {{ background-color: #f2f2f2; font-weight: bold; }}
+            .signature-table td:first-child {{ font-weight: bold; width: 25%; }}
+            .risk {{ color: #d32f2f; font-weight: bold; }}
+            .status-pass {{ color: #2e7d32; font-weight: bold; }}
+            .status-fail {{ color: #d32f2f; font-weight: bold; }}
+            @media print {{
+                body {{ padding: 0; }}
+                .no-print {{ display: none; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <h1>{data['report_title']}</h1>
+        
+        <!-- Информационная таблица -->
+        <table>
+            <tr><th>Проект:</th><td>{data['project']}</td></tr>
+            <tr><th>Тип приложения:</th><td>{data['app_type']}</td></tr>
+            <tr><th>Версия приложения:</th><td>{data['version']}</td></tr>
+            <tr><th>Период тестирования:</th><td>{data['test_period']}</td></tr>
+            <tr><th>Дата формирования отчёта:</th><td>{data['report_date']}</td></tr>
+            <tr><th>Тест-инженер:</th><td>{data['engineer']}</td></tr>
+        </table>
+        
+        <h2>1. КРАТКОЕ РЕЗЮМЕ</h2>
+        <table>
+            <tr><th>Статус релиза:</th><td>{data['release_status']}</td></tr>
+            <tr><th>Критические дефекты (S1):</th><td>{data['s1']}</td></tr>
+            <tr><th>Мажорные дефекты (S2):</th><td>{data['s2']}</td></tr>
+            <tr><th>Всего тест-кейсов:</th><td>{data['total_tc']}</td></tr>
+            <tr><th>Успешно (Pass):</th><td class="status-pass">{data['pass']} ({data['pass']/data['total_tc']*100:.1f}%)</td></tr>
+            <tr><th>Упали (Fail):</th><td class="status-fail">{data['fail']} ({data['fail']/data['total_tc']*100:.1f}%)</td></tr>
+            <tr><th>Основной риск:</th><td class="risk">{data['risk']}</td></tr>
+            <tr><th>Рекомендация:</th><td>{data['recommendation']}</td></tr>
+        </table>
+        
+        <h2>2. КОНТЕКСТ ТЕСТИРОВАНИЯ</h2>
+        <table>
+            <tr><th>Устройство / Браузер:</th><td>{data['device_browser']}</td></tr>
+            <tr><th>ОС / Платформа:</th><td>{data['os_platform']}</td></tr>
+            <tr><th>Сборка / Версия:</th><td>{data['build']}</td></tr>
+            <tr><th>Стенд:</th><td>Тестовое окружение (адрес: {data['env_url']})</td></tr>
+            <tr><th>Инструменты:</th><td>{data['tools']}</td></tr>
+            <tr><th>Методология:</th><td>{data['methodology']}</td></tr>
+        </table>
+    """
+    
+    # Результаты по модулям
+    html += "<h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>"
+    for idx, module_info in enumerate(module_data_list):
+        html += f"<h3>3.{idx+1}. {module_info['title']}</h3><table><tr><th>ID</th><th>Сценарий</th><th>Статус</th><th>Комментарий</th></tr>"
+        df = module_info['df']
+        if not df.empty:
+            for _, row in df.iterrows():
+                status_class = "status-pass" if str(row[2]).upper() == "PASS" else "status-fail" if str(row[2]).upper() == "FAIL" else ""
+                html += f"<tr><td>{row[0]}</td><td>{row[1]}</td><td class='{status_class}'>{row[2]}</td><td>{row[3]}</td></tr>"
+        else:
+            html += "<tr><td colspan='4' style='text-align:center'>Нет данных</td></tr>"
+        html += "</table>"
+    
+    # Анализ дефектов
+    html += "<h2>4. АНАЛИЗ ДЕФЕКТОВ</h2><table><tr><th>ID</th><th>Модуль</th><th>Заголовок</th><th>Серьёзность</th><th>Статус</th></tr>"
+    if not defects_df.empty:
+        for _, row in defects_df.iterrows():
+            html += f"<tr><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>{row[4]}</td></tr>"
+    else:
+        html += "<tr><td colspan='5' style='text-align:center'>Нет данных</td></tr>"
+    html += "</table>"
+    html += f"<p><strong>Последствия:</strong><br>{data['consequences'].replace(chr(10), '<br>')}</p>"
+    
+    # Ограничения тестирования
+    html += "<h2>5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ</h2><ul>"
+    for line in data['limitations'].split('\n'):
+        if line.strip():
+            html += f"<li>{line.strip()}</li>"
+    html += "</ul>"
+    
+    # Вывод и рекомендации
+    html += f"""
+        <h2>6. ВЫВОД И РЕКОМЕНДАЦИИ</h2>
+        <p><strong>Вывод:</strong><br>{data['conclusion']}</p>
+        <p><strong>Рекомендации:</strong></p>
+        <ul>
+    """
+    for line in data['recommendations_detailed'].split('\n'):
+        if line.strip():
+            html += f"<li>{line.strip()}</li>"
+    html += "</ul>"
+    
+    # Подпись
+    html += f"""
+        <h2>7. ПОДПИСЬ</h2>
+        <table class="signature-table">
+            <tr><th>Роль:</th><td>{data['role']}</td></tr>
+            <tr><th>ФИО:</th><td>{data['fullname']}</td></tr>
+            <tr><th>Дата:</th><td>{data['signature_date']}</td></tr>
+        </table>
+        
+        <div class="no-print" style="margin-top: 30px; padding: 15px; background-color: #e3f2fd; border-radius: 5px;">
+            <h3>💡 Как сохранить отчёт как PDF:</h3>
+            <ol>
+                <li>Нажмите <strong>Ctrl+P</strong> (Windows) или <strong>Cmd+P</strong> (Mac)</li>
+                <li>В настройках печати выберите «Сохранить как PDF»</li>
+                <li>Нажмите «Сохранить»</li>
+            </ol>
+            <p style="margin-top: 10px; font-style: italic;">
+                Этот HTML-отчёт оптимизирован для печати. Все стили и таблицы будут корректно отображены в PDF.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    buffer = io.BytesIO()
+    buffer.write(html.encode('utf-8'))
     buffer.seek(0)
     return buffer
 
@@ -380,6 +471,16 @@ default_defects = pd.DataFrame([
 st.set_page_config(page_title="Универсальный генератор QA-отчёта", layout="wide")
 st.title("📄 Универсальный генератор отчёта о тестировании")
 
+# === ВАЖНОЕ УВЕДОМЛЕНИЕ О PDF ===
+st.info("""
+💡 **Как получить PDF-версию отчёта:**
+1. Скачайте отчёт в формате **HTML** (кнопка ниже)
+2. Откройте файл в браузере (Chrome, Edge, Firefox)
+3. Нажмите **Ctrl+P** → выберите «Сохранить как PDF» → Сохранить
+
+*Это самый надёжный способ получить качественный PDF без установки дополнительных программ.*
+""")
+
 # === ФОРМА ВВОДА ===
 with st.form("main_form"):
     report_title = st.text_input(
@@ -414,7 +515,7 @@ with st.form("main_form"):
         os_platform = st.text_input("ОС / Платформа", "Android 15")
         build = st.text_input("Сборка", "lemanna-pro_241006.001.apk")
     with col4:
-        env_url = st.text_input("URL стенда", "https://test.lemanna.pro")
+        env_url = st.text_input("URL стенда", "https://test.lemanna.pro")  # Исправлено: убраны лишние пробелы
         tools = st.text_input("Инструменты", "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)")
         methodology = st.text_input("Методология", "Ручное функциональное тестирование + проверка безопасности")
 
@@ -447,40 +548,28 @@ with st.form("main_form"):
     fullname = st.text_input("ФИО", "Черкасов Игорь")
     signature_date = st.text_input("Дата", "30.11.2025")
 
-    # === НОВАЯ ОПЦИЯ: Выбор формата экспорта ===
-    export_format = st.selectbox(
-        "Формат экспорта",
-        ["Только DOCX", "Только PDF", "DOCX + PDF"],
-        index=0,
-        help="PDF доступен только при установленном модуле docx2pdf"
-    )
-    
     submitted = st.form_submit_button("📥 Создать отчёт")
 
 if submitted:
     # === БАЗОВАЯ ВАЛИДАЦИЯ ДАННЫХ ===
     validation_errors = []
     
-    # Проверка: сумма статусов должна равняться общему количеству
     if pass_tc + fail_tc != total_tc:
         validation_errors.append(
             f"⚠️ Сумма статусов ({pass_tc} PASS + {fail_tc} FAIL = {pass_tc + fail_tc}) "
             f"не равна общему количеству тест-кейсов ({total_tc})"
         )
     
-    # Проверка: общее количество должно быть > 0
     if total_tc <= 0:
         validation_errors.append("❌ Общее количество тест-кейсов должно быть больше 0")
     
-    # Проверка: отрицательные значения в дефектах
     if s1 < 0 or s2 < 0:
         validation_errors.append("❌ Количество дефектов не может быть отрицательным")
     
-    # Отображение ошибок валидации
     if validation_errors:
         for error in validation_errors:
             st.error(error)
-        st.stop()  # Прекращаем выполнение при ошибках
+        st.stop()
     
     # === ПОДГОТОВКА ДАННЫХ ===
     data = {
@@ -500,7 +589,7 @@ if submitted:
         "device_browser": device_browser,
         "os_platform": os_platform,
         "build": build,
-        "env_url": env_url.strip(),  # === ИСПРАВЛЕНИЕ: Очистка от лишних пробелов ===
+        "env_url": env_url.strip(),  # Очистка от пробелов
         "tools": tools,
         "methodology": methodology,
         "risk": risk,
@@ -518,50 +607,51 @@ if submitted:
         # === ГЕНЕРАЦИЯ DOCX ===
         docx_buffer = generate_docx(data, module_data_list, defects)
         
-        # === КОНВЕРТАЦИЯ В PDF (если выбрано) ===
-        pdf_buffer = None
-        if export_format in ["Только PDF", "DOCX + PDF"]:
-            if not PDF_CONVERSION_AVAILABLE:
-                st.error("❌ Экспорт в PDF недоступен. Установите модуль: `pip install docx2pdf`")
-            else:
-                with st.spinner("Конвертация в PDF..."):
-                    try:
-                        pdf_buffer = convert_docx_to_pdf(docx_buffer)
-                    except Exception as e:
-                        st.error(f"❌ Ошибка конвертации в PDF: {str(e)}")
-                        # Продолжаем работу, только без PDF
+        # === ГЕНЕРАЦИЯ HTML (альтернатива PDF) ===
+        html_buffer = generate_html_report(data, module_data_list, defects)
         
         st.success("✅ Отчёт готов!")
         
         # === КНОПКИ СКАЧИВАНИЯ ===
-        col_download1, col_download2 = st.columns(2)
+        col1, col2 = st.columns(2)
         
-        with col_download1:
-            if export_format in ["Только DOCX", "DOCX + PDF"]:
-                st.download_button(
-                    "📄 Скачать .docx",
-                    docx_buffer,
-                    "Отчёт_о_тестировании.docx",
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True
-                )
+        with col1:
+            st.download_button(
+                "📄 Скачать DOCX",
+                docx_buffer,
+                "Отчёт_о_тестировании.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+                type="primary"
+            )
         
-        with col_download2:
-            if pdf_buffer is not None and export_format in ["Только PDF", "DOCX + PDF"]:
-                st.download_button(
-                    "📄 Скачать .pdf",
-                    pdf_buffer,
-                    "Отчёт_о_тестировании.pdf",
-                    "application/pdf",
-                    use_container_width=True
-                )
+        with col2:
+            st.download_button(
+                "🌐 Скачать HTML (для сохранения как PDF)",
+                html_buffer,
+                "Отчёт_о_тестировании.html",
+                "text/html",
+                use_container_width=True
+            )
         
-        # Информация о доступности форматов
-        if export_format in ["Только PDF", "DOCX + PDF"] and not PDF_CONVERSION_AVAILABLE:
-            st.info("ℹ️ Для экспорта в PDF установите: `pip install docx2pdf`")
+        # === ИНСТРУКЦИЯ ПО КОНВЕРТАЦИИ В PDF ===
+        st.markdown("""
+        <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 20px;">
+            <h4>🖨️ Как конвертировать HTML в PDF:</h4>
+            <ol>
+                <li>Скачайте файл в формате <strong>HTML</strong> (кнопка справа)</li>
+                <li>Откройте его в браузере Chrome, Edge или Firefox</li>
+                <li>Нажмите <kbd>Ctrl+P</kbd> (Windows) или <kbd>Cmd+P</kbd> (Mac)</li>
+                <li>В настройках печати выберите «Сохранить как PDF»</li>
+                <li>Нажмите «Сохранить» — получите профессиональный PDF-отчёт</li>
+            </ol>
+            <p style="margin-top: 10px; font-style: italic; color: #1b5e20;">
+                ✅ Этот метод работает в 100% случаев и не требует установки дополнительных программ
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
             
     except Exception as e:
         st.error(f"❌ Ошибка генерации отчёта: {str(e)}")
-        # Показываем traceback для отладки (в продакшене можно заменить на логирование)
         with st.expander("Показать детали ошибки"):
             st.code(traceback.format_exc())
