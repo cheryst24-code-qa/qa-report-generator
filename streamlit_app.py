@@ -251,11 +251,14 @@ def generate_pdf(data, module_data_list, defects_df):
     for idx, module_info in enumerate(module_data_list):
         story.append(Paragraph(f'3.{idx+1}. {module_info["title"]}', styles['Heading3']))
         
-        # Используем iterrows() и fillna для надежности
         df_cleaned = module_info['df'].fillna('')
         table_data = [df_cleaned.columns.tolist()]
-        for _, row in df_cleaned.iterrows():
-            table_data.append(row.tolist())
+        for i in range(len(df_cleaned)):
+            row = []
+            for col in df_cleaned.columns:
+                val = df_cleaned.iloc[i][col]
+                row.append(str(val))
+            table_data.append(row)
         
         t = Table(table_data)
         t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
@@ -275,8 +278,12 @@ def generate_pdf(data, module_data_list, defects_df):
     
     defects_df_cleaned = defects_df.fillna('')
     defects_data = [defects_df_cleaned.columns.tolist()]
-    for _, row in defects_df_cleaned.iterrows():
-        defects_data.append(row.tolist())
+    for i in range(len(defects_df_cleaned)):
+        row = []
+        for col in defects_df_cleaned.columns:
+            val = defects_df_cleaned.iloc[i][col]
+            row.append(str(val))
+        defects_data.append(row)
     
     t = Table(defects_data)
     t.setStyle(('BACKGROUND', (0, 0), (-1, 0), colors.grey))
