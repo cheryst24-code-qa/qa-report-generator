@@ -73,7 +73,7 @@ def generate_docx(data, module_data_list, defects_df):
     doc = Document()
     style = doc.styles['Normal']
     font = style.font
-    font.name = 'Times New Roman'
+    font.name = 'Calibri Light'
     font.size = Pt(12)
     
     # ЗАГОЛОВОК
@@ -555,7 +555,7 @@ def generate_html_report(data, module_data_list, defects_df):
             <tr><td>Дата:</td><td>{escape_html(data['signature_date'])}</td></tr>
         </table>
         
-        <div class="no-print" style="margin-top: 30px; padding: 15px; background-color: #e3f2fd; border-radius: 5px; border: 1px solid #90caf9;">
+        <div class="no-print" style="margin-top: 30px; padding: 15px; background-color: #3f403f; border-radius: 5px; border: 1px solid #90caf9;">
             <h3 style="margin-top: 0;">💡 Как сохранить отчёт как PDF:</h3>
             <ol>
                 <li>Нажмите <strong>Ctrl+P</strong> (Windows) или <strong>Cmd+P</strong> (Mac)</li>
@@ -608,12 +608,6 @@ default_defects = pd.DataFrame([
 # === ИНТЕРФЕЙС STREAMLIT ===
 st.set_page_config(page_title="Универсальный генератор QA-отчёта", layout="wide")
 st.title("📄 Универсальный генератор отчёта о тестировании")
-
-st.info("""
-✅ **Исправлено:** Диаграммы теперь корректно отображаются в HTML-отчёте.
-✅ **Исправлено:** Фиксированная ширина колонок (25%/75%) как в деловом документе.
-✅ **Исправлено:** Экранирование спецсимволов для корректного отображения.
-""")
 
 # === ФОРМА ВВОДА ===
 with st.form("main_form"):
