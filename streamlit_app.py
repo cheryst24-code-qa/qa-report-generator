@@ -583,11 +583,11 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     
     # === ОПТИМАЛЬНЫЕ ШИРИНЫ ДЛЯ ВСЕХ СЕКЦИЙ ===
     COL_WIDTHS = {
-        'A': 22,  # Метрика / Параметр / Модуль (увеличено!)
-        'B': 14,  # ID (увеличено под длинные ID)
-        'C': 32,  # Сценарий / Заголовок (увеличено)
+        'A': 22,  # Метрика / Параметр / Модуль
+        'B': 14,  # ID
+        'C': 32,  # Сценарий / Заголовок
         'D': 12,  # Статус / Серьёзность
-        'E': 35   # Комментарий / Детали (уменьшено)
+        'E': 35   # Комментарий / Детали
     }
     
     # Стили
@@ -611,7 +611,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     
     row = 1
     
-    # === ЗАГОЛОВОК (объединяем все 5 колонок) ===
+    # === ЗАГОЛОВОК ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value=data["report_title"])
     cell.font = Font(name='Calibri', size=16, bold=True, color="FFFFFF")
@@ -621,7 +621,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.cell(row=row, column=col).border = thin_border
     row += 2
     
-    # === СВОДКА (5 колонок: Метрика + объединённое значение) ===
+    # === СВОДКА (с границами у всех ячеек) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="📊 КЛЮЧЕВЫЕ МЕТРИКИ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -645,15 +645,13 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ]
     
     for label, value in summary_rows:
-        # Метрика в колонке A (увеличена до 22)
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
-        ws.cell(row=row, column=1, value=label).border = thin_border
+        ws.cell(row=row, column=1, value=label).border = thin_border  # ← ГРАНИЦА
         ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
-        # Значение объединено в колонках B-E (максимальная ширина)
         ws.merge_cells(f'B{row}:E{row}')
         cell_value = ws.cell(row=row, column=2, value=value)
-        cell_value.border = thin_border
+        cell_value.border = thin_border  # ← ГРАНИЦА
         cell_value.alignment = wrap_left
         
         # Подсветка статуса
@@ -667,7 +665,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         row += 1
     row += 1
     
-    # === КОНТЕКСТ (5 колонок: Параметр + объединённое значение) ===
+    # === КОНТЕКСТ (с границами у всех ячеек) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="⚙️ КОНТЕКСТ ТЕСТИРОВАНИЯ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -690,17 +688,17 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     
     for label, value in context_rows:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
-        ws.cell(row=row, column=1, value=label).border = thin_border
+        ws.cell(row=row, column=1, value=label).border = thin_border  # ← ГРАНИЦА
         ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
         ws.merge_cells(f'B{row}:E{row}')
         cell_value = ws.cell(row=row, column=2, value=value)
-        cell_value.border = thin_border
+        cell_value.border = thin_border  # ← ГРАНИЦА
         cell_value.alignment = wrap_left
         row += 1
     row += 1
     
-    # === РЕЗУЛЬТАТЫ ТЕСТОВ (5 колонок с оптимизированными ширинами) ===
+    # === РЕЗУЛЬТАТЫ ТЕСТОВ (без изменений) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="✅ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -710,7 +708,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.cell(row=row, column=col).border = thin_border
     row += 1
     
-    # Заголовки тестов
     test_headers = ["Модуль", "ID", "Сценарий", "Статус", "Комментарий"]
     for col_idx, header in enumerate(test_headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)
@@ -720,7 +717,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell.alignment = wrap_center
     row += 1
     
-    # Данные тестов
     for module_info in module_data_list:
         module_name = module_info['title']
         df = module_info['df']
@@ -750,7 +746,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 row += 1
     row += 1
     
-    # === ДЕФЕКТЫ (5 колонок без изменений) ===
+    # === ДЕФЕКТЫ (без изменений) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="🐞 АНАЛИЗ ДЕФЕКТОВ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -792,7 +788,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         row += 1
     row += 1
     
-    # === ОСТАЛЬНЫЕ СЕКЦИИ (Ограничения, Вывод, Рекомендации, Подпись) ===
+    # === ОГРАНИЧЕНИЯ, ВЫВОД, РЕКОМЕНДАЦИИ (границы ТОЛЬКО у заголовков) ===
     sections = [
         ("⚠️ ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ", data["limitations"]),
         ("💡 ВЫВОД", data["conclusion"]),
@@ -806,19 +802,19 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell.fill = notes_fill
         cell.alignment = wrap_center
         for col in range(1, 6):
-            ws.cell(row=row, column=col).border = thin_border
+            ws.cell(row=row, column=col).border = thin_border  # ← ГРАНИЦА ТОЛЬКО У ЗАГОЛОВКА
         row += 1
         
         for line in content.split('\n'):
             if line.strip():
                 ws.merge_cells(f'A{row}:E{row}')
                 cell = ws.cell(row=row, column=1, value=f"• {line.strip()}")
-                cell.border = thin_border
+                # ← НЕТ ГРАНИЦ У ТЕКСТА СПИСКА
                 cell.alignment = wrap_left
                 row += 1
         row += 1
     
-    # === ПОДПИСЬ (5 колонок: Параметр + объединённое значение) ===
+    # === ПОДПИСЬ (с границами у всех ячеек) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="Подпись")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -836,12 +832,12 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     
     for label, value in signature_rows:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
-        ws.cell(row=row, column=1, value=label).border = thin_border
+        ws.cell(row=row, column=1, value=label).border = thin_border  # ← ГРАНИЦА
         ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
         ws.merge_cells(f'B{row}:E{row}')
         cell_value = ws.cell(row=row, column=2, value=value)
-        cell_value.border = thin_border
+        cell_value.border = thin_border  # ← ГРАНИЦА
         cell_value.alignment = wrap_left
         row += 1
     
