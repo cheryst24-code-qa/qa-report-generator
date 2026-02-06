@@ -136,7 +136,7 @@ def generate_docx(data, module_data_list, defects_df):
     summary_table = doc.add_table(rows=8, cols=2)
     summary_table.style = 'Table Grid'
     
-    # Устанавливаем ширину колонок: первая колонка — 15%, вторая — 85%
+    # Устанавливаем ширину колонок: первая колонка — 25%, вторая — 75%
     for row in summary_table.rows:
         row.cells[0].width = first_col_width
         row.cells[1].width = second_col_width
@@ -202,7 +202,7 @@ def generate_docx(data, module_data_list, defects_df):
     context_table = doc.add_table(rows=6, cols=2)
     context_table.style = 'Table Grid'
     
-    # Устанавливаем ширину колонок: первая колонка — 15%, вторая — 85%
+    # Устанавливаем ширину колонок: первая колонка — 25%, вторая — 75%
     for row in context_table.rows:
         row.cells[0].width = first_col_width
         row.cells[1].width = second_col_width
@@ -268,7 +268,7 @@ def generate_docx(data, module_data_list, defects_df):
     signature_table = doc.add_table(rows=3, cols=2)
     signature_table.style = 'Table Grid'
     
-    # Устанавливаем ширину колонок: первая колонка — 15%, вторая — 85%
+    # Устанавливаем ширину колонок: первая колонка — 25%, вторая — 75%
     for row in signature_table.rows:
         row.cells[0].width = first_col_width
         row.cells[1].width = second_col_width
@@ -366,7 +366,7 @@ with st.form("main_form"):
         os_platform = st.text_input("ОС / Платформа", "Android 15")
         build = st.text_input("Сборка", "lemanna-pro_241006.001.apk")
     with col4:
-        env_url = st.text_input("URL стенда", "https://test.lemanna.pro        ")
+        env_url = st.text_input("URL стенда", "https://test.lemanna.pro")
         tools = st.text_input("Инструменты", "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)")
         methodology = st.text_input("Методология", "Ручное функциональное тестирование + проверка безопасности")
 
