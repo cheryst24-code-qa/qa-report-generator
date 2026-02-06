@@ -570,7 +570,7 @@ def generate_html_report(data, module_data_list, defects_df):
     return buffer
 
 def generate_xlsx_single_sheet(data, module_data_list, defects_df):
-    """Генерирует профессиональный XLSX-отчёт с корректной структурой"""
+    """Генерирует профессиональный XLSX-отчёт с единой 5-колоночной структурой"""
     from io import BytesIO
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -581,8 +581,14 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws = wb.active
     ws.title = "Отчёт о тестировании"
     
-    # Ширины: A=20 (метрики), B=45 (значения)
-    COL_WIDTHS = {'A': 20, 'B': 45}
+    # === ЕДИНЫЕ ШИРИНЫ ДЛЯ ВСЕХ СЕКЦИЙ (оптимизировано под содержимое) ===
+    COL_WIDTHS = {
+        'A': 18,  # Модуль / Параметр / Метрика
+        'B': 10,  # ID (уменьшено!)
+        'C': 28,  # Сценарий / Заголовок / Основное значение
+        'D': 12,  # Статус / Серьёзность
+        'E': 45   # Комментарий / Детали
+    }
     
     # Стили
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -605,23 +611,23 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     
     row = 1
     
-    # === ЗАГОЛОВОК ===
-    ws.merge_cells(f'A{row}:B{row}')
+    # === ЗАГОЛОВОК (объединяем все 5 колонок) ===
+    ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value=data["report_title"])
     cell.font = Font(name='Calibri', size=16, bold=True, color="FFFFFF")
     cell.fill = header_fill
     cell.alignment = wrap_center
-    for col in range(1, 3):
+    for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
     row += 2
     
-    # === СВОДКА (2 колонки) ===
-    ws.merge_cells(f'A{row}:B{row}')
+    # === СВОДКА (5 колонок: Метрика + объединённое значение) ===
+    ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="📊 КЛЮЧЕВЫЕ МЕТРИКИ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = section_fill
     cell.alignment = wrap_center
-    for col in range(1, 3):
+    for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
     row += 1
     
@@ -639,31 +645,35 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ]
     
     for label, value in summary_rows:
+        # Метрика в колонке A
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
         ws.cell(row=row, column=1, value=label).border = thin_border
         ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
-        ws.cell(row=row, column=2, value=value).border = thin_border
-        ws.cell(row=row, column=2, value=value).alignment = wrap_left
+        # Значение объединено в колонках B-E
+        ws.merge_cells(f'B{row}:E{row}')
+        cell_value = ws.cell(row=row, column=2, value=value)
+        cell_value.border = thin_border
+        cell_value.alignment = wrap_left
         
         # Подсветка статуса
         if "НЕ РЕКОМЕНДОВАН" in str(value):
-            ws.cell(row=row, column=2, value=value).fill = critical_fill
-            ws.cell(row=row, column=2, value=value).font = Font(color="FFFFFF", bold=True)
+            cell_value.fill = critical_fill
+            cell_value.font = Font(color="FFFFFF", bold=True)
         elif "РЕКОМЕНДОВАН" in str(value):
-            ws.cell(row=row, column=2, value=value).fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")
-            ws.cell(row=row, column=2, value=value).font = Font(color="FFFFFF", bold=True)
+            cell_value.fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")
+            cell_value.font = Font(color="FFFFFF", bold=True)
         
         row += 1
     row += 1
     
-    # === КОНТЕКСТ (2 колонки) ===
-    ws.merge_cells(f'A{row}:B{row}')
+    # === КОНТЕКСТ (5 колонок: Параметр + объединённое значение) ===
+    ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="⚙️ КОНТЕКСТ ТЕСТИРОВАНИЯ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = context_fill
     cell.alignment = wrap_center
-    for col in range(1, 3):
+    for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
     row += 1
     
@@ -683,12 +693,14 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.cell(row=row, column=1, value=label).border = thin_border
         ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
-        ws.cell(row=row, column=2, value=value).border = thin_border
-        ws.cell(row=row, column=2, value=value).alignment = wrap_left
+        ws.merge_cells(f'B{row}:E{row}')
+        cell_value = ws.cell(row=row, column=2, value=value)
+        cell_value.border = thin_border
+        cell_value.alignment = wrap_left
         row += 1
     row += 1
     
-    # === РЕЗУЛЬТАТЫ ТЕСТОВ (5 колонок) ===
+    # === РЕЗУЛЬТАТЫ ТЕСТОВ (5 колонок без изменений) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="✅ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -718,7 +730,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 ws.cell(row=row, column=1, value=module_name).alignment = wrap_left
                 
                 ws.cell(row=row, column=2, value=test_row[0]).border = thin_border
-                ws.cell(row=row, column=2, value=test_row[0]).alignment = wrap_left
+                ws.cell(row=row, column=2, value=test_row[0]).alignment = wrap_center
                 
                 ws.cell(row=row, column=3, value=test_row[1]).border = thin_border
                 ws.cell(row=row, column=3, value=test_row[1]).alignment = wrap_left
@@ -738,7 +750,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 row += 1
     row += 1
     
-    # === ДЕФЕКТЫ (5 колонок) ===
+    # === ДЕФЕКТЫ (5 колонок без изменений) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="🐞 АНАЛИЗ ДЕФЕКТОВ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
