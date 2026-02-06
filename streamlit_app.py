@@ -569,6 +569,294 @@ def generate_html_report(data, module_data_list, defects_df):
     buffer.seek(0)
     return buffer
 
+def generate_xlsx_single_sheet(data, module_data_list, defects_df):
+    """Генерирует профессиональный XLSX-отчёт с корректной структурой"""
+    from io import BytesIO
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    
+    output = BytesIO()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Отчёт о тестировании"
+    
+    # Ширины: A=20 (метрики), B=45 (значения)
+    COL_WIDTHS = {'A': 20, 'B': 45}
+    
+    # Стили
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    section_fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")
+    context_fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
+    defects_fill = PatternFill(start_color="7030A0", end_color="7030A0", fill_type="solid")
+    notes_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+    signature_fill = PatternFill(start_color="333333", end_color="333333", fill_type="solid")
+    pass_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    fail_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    critical_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+    major_fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+    wrap_left = Alignment(wrap_text=True, vertical="top", horizontal="left")
+    wrap_center = Alignment(wrap_text=True, vertical="center", horizontal="center")
+    wrap_right = Alignment(wrap_text=True, vertical="top", horizontal="right")
+    
+    row = 1
+    
+    # === ЗАГОЛОВОК ===
+    ws.merge_cells(f'A{row}:B{row}')
+    cell = ws.cell(row=row, column=1, value=data["report_title"])
+    cell.font = Font(name='Calibri', size=16, bold=True, color="FFFFFF")
+    cell.fill = header_fill
+    cell.alignment = wrap_center
+    for col in range(1, 3):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 2
+    
+    # === СВОДКА (2 колонки) ===
+    ws.merge_cells(f'A{row}:B{row}')
+    cell = ws.cell(row=row, column=1, value="📊 КЛЮЧЕВЫЕ МЕТРИКИ")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = section_fill
+    cell.alignment = wrap_center
+    for col in range(1, 3):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    summary_rows = [
+        ["Проект", data["project"]],
+        ["Версия", data["version"]],
+        ["Период тестирования", data["test_period"]],
+        ["Всего тест-кейсов", str(data["total_tc"])],
+        ["Успешно (Pass)", f"{data['pass']} ({data['pass']/data['total_tc']*100:.1f}%)"],
+        ["Упали (Fail)", f"{data['fail']} ({data['fail']/data['total_tc']*100:.1f}%)"],
+        ["Critical (S1)", str(data["s1"])],
+        ["Major (S2)", str(data["s2"])],
+        ["Статус релиза", data["release_status"]],
+        ["Рекомендация", data["recommendation"]],
+    ]
+    
+    for label, value in summary_rows:
+        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=row, column=1, value=label).border = thin_border
+        ws.cell(row=row, column=1, value=label).alignment = wrap_right
+        
+        ws.cell(row=row, column=2, value=value).border = thin_border
+        ws.cell(row=row, column=2, value=value).alignment = wrap_left
+        
+        # Подсветка статуса
+        if "НЕ РЕКОМЕНДОВАН" in str(value):
+            ws.cell(row=row, column=2, value=value).fill = critical_fill
+            ws.cell(row=row, column=2, value=value).font = Font(color="FFFFFF", bold=True)
+        elif "РЕКОМЕНДОВАН" in str(value):
+            ws.cell(row=row, column=2, value=value).fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")
+            ws.cell(row=row, column=2, value=value).font = Font(color="FFFFFF", bold=True)
+        
+        row += 1
+    row += 1
+    
+    # === КОНТЕКСТ (2 колонки) ===
+    ws.merge_cells(f'A{row}:B{row}')
+    cell = ws.cell(row=row, column=1, value="⚙️ КОНТЕКСТ ТЕСТИРОВАНИЯ")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = context_fill
+    cell.alignment = wrap_center
+    for col in range(1, 3):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    context_rows = [
+        ["Устройство / Браузер", data["device_browser"]],
+        ["ОС / Платформа", data["os_platform"]],
+        ["Сборка / Версия", data["build"]],
+        ["Стенд", data["env_url"].strip()],
+        ["Инструменты", data["tools"]],
+        ["Методология", data["methodology"]],
+        ["Тест-инженер", data["engineer"]],
+        ["Дата формирования", data["report_date"]],
+    ]
+    
+    for label, value in context_rows:
+        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=row, column=1, value=label).border = thin_border
+        ws.cell(row=row, column=1, value=label).alignment = wrap_right
+        
+        ws.cell(row=row, column=2, value=value).border = thin_border
+        ws.cell(row=row, column=2, value=value).alignment = wrap_left
+        row += 1
+    row += 1
+    
+    # === РЕЗУЛЬТАТЫ ТЕСТОВ (5 колонок) ===
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="✅ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = section_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    # Заголовки тестов
+    test_headers = ["Модуль", "ID", "Сценарий", "Статус", "Комментарий"]
+    for col_idx, header in enumerate(test_headers, start=1):
+        cell = ws.cell(row=row, column=col_idx, value=header)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.border = thin_border
+        cell.alignment = wrap_center
+    row += 1
+    
+    # Данные тестов
+    for module_info in module_data_list:
+        module_name = module_info['title']
+        df = module_info['df']
+        if not df.empty:
+            for _, test_row in df.iterrows():
+                ws.cell(row=row, column=1, value=module_name).border = thin_border
+                ws.cell(row=row, column=1, value=module_name).alignment = wrap_left
+                
+                ws.cell(row=row, column=2, value=test_row[0]).border = thin_border
+                ws.cell(row=row, column=2, value=test_row[0]).alignment = wrap_left
+                
+                ws.cell(row=row, column=3, value=test_row[1]).border = thin_border
+                ws.cell(row=row, column=3, value=test_row[1]).alignment = wrap_left
+                
+                status_cell = ws.cell(row=row, column=4, value=test_row[2])
+                status_cell.border = thin_border
+                status_cell.alignment = wrap_center
+                if str(test_row[2]).upper() == "PASS":
+                    status_cell.fill = pass_fill
+                    status_cell.font = Font(color="006100", bold=True)
+                elif str(test_row[2]).upper() == "FAIL":
+                    status_cell.fill = fail_fill
+                    status_cell.font = Font(color="9C0006", bold=True)
+                
+                ws.cell(row=row, column=5, value=test_row[3]).border = thin_border
+                ws.cell(row=row, column=5, value=test_row[3]).alignment = wrap_left
+                row += 1
+    row += 1
+    
+    # === ДЕФЕКТЫ (5 колонок) ===
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="🐞 АНАЛИЗ ДЕФЕКТОВ")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = defects_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    defect_headers = ["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"]
+    for col_idx, header in enumerate(defect_headers, start=1):
+        cell = ws.cell(row=row, column=col_idx, value=header)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.border = thin_border
+        cell.alignment = wrap_center
+    row += 1
+    
+    if not defects_df.empty:
+        for _, defect_row in defects_df.iterrows():
+            for col_idx, value in enumerate(defect_row, start=1):
+                cell = ws.cell(row=row, column=col_idx, value=value)
+                cell.border = thin_border
+                cell.alignment = wrap_left if col_idx in (3, 5) else wrap_center
+                if col_idx == 4:  # Серьёзность
+                    sev = str(value)
+                    if "Critical" in sev:
+                        cell.fill = critical_fill
+                        cell.font = Font(color="FFFFFF", bold=True)
+                    elif "Major" in sev:
+                        cell.fill = major_fill
+                        cell.font = Font(color="FFFFFF", bold=True)
+            row += 1
+    else:
+        ws.merge_cells(f'A{row}:E{row}')
+        cell = ws.cell(row=row, column=1, value="Нет зарегистрированных дефектов")
+        cell.alignment = wrap_center
+        cell.border = thin_border
+        row += 1
+    row += 1
+    
+    # === ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ ===
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="⚠️ ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = notes_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    for line in data['limitations'].split('\n'):
+        if line.strip():
+            ws.merge_cells(f'A{row}:E{row}')
+            cell = ws.cell(row=row, column=1, value=f"• {line.strip()}")
+            cell.border = thin_border
+            cell.alignment = wrap_left
+            row += 1
+    row += 1
+    
+    # === ВЫВОД И РЕКОМЕНДАЦИИ ===
+    sections = [
+        ("💡 ВЫВОД", data["conclusion"]),
+        ("📌 РЕКОМЕНДАЦИИ", data["recommendations_detailed"]),
+    ]
+    
+    for title, content in sections:
+        ws.merge_cells(f'A{row}:E{row}')
+        cell = ws.cell(row=row, column=1, value=title)
+        cell.font = Font(bold=True, size=12, color="FFFFFF")
+        cell.fill = notes_fill
+        cell.alignment = wrap_center
+        for col in range(1, 6):
+            ws.cell(row=row, column=col).border = thin_border
+        row += 1
+        
+        for line in content.split('\n'):
+            if line.strip():
+                ws.merge_cells(f'A{row}:E{row}')
+                cell = ws.cell(row=row, column=1, value=f"• {line.strip()}")
+                cell.border = thin_border
+                cell.alignment = wrap_left
+                row += 1
+        row += 1
+    
+    # === ПОДПИСЬ ===
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="Подпись")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = signature_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    signature_rows = [
+        ["Роль", data["role"]],
+        ["ФИО", data["fullname"]],
+        ["Дата", data["signature_date"]],
+    ]
+    
+    for label, value in signature_rows:
+        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=row, column=1, value=label).border = thin_border
+        ws.cell(row=row, column=1, value=label).alignment = wrap_right
+        
+        ws.cell(row=row, column=2, value=value).border = thin_border
+        ws.cell(row=row, column=2, value=value).alignment = wrap_left
+        row += 1
+    
+    # === УСТАНОВКА ШИРИН КОЛОНОК ===
+    for col_letter, width in COL_WIDTHS.items():
+        ws.column_dimensions[col_letter].width = width
+    
+    wb.save(output)
+    output.seek(0)
+    return output
+
 # === ДАННЫЕ ПО УМОЛЧАНИЮ ===
 default_modules = [
     {"title": "Главный экран и навигация", "df": pd.DataFrame([
