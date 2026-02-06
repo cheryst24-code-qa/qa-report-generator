@@ -79,7 +79,7 @@ def generate_docx(data, module_data_list, defects_df):
     # Настройка стиля документа
     style = doc.styles['Normal']
     style.font.name = 'Calibri Light'
-    style.font.size = Pt(11)
+    style.font.size = Pt(12)
     
     # === ЗАГОЛОВОК ОТЧЁТА (центрированный, крупный) ===
     title = doc.add_heading(data["report_title"], 0)
@@ -406,7 +406,7 @@ def generate_html_report(data, module_data_list, defects_df):
     <style>
         body {{
             font-family: Calibri Light, 'Segoe UI', sans-serif;
-            font-size: 11pt;
+            font-size: 12pt;
             line-height: 1.5;
             max-width: 800px;
             margin: 0 auto;
@@ -1125,7 +1125,7 @@ if submitted:
             )
         with col2:
             st.download_button(
-                "🌐 HTML",
+                "🌐 HTML (pdf)",
                 html_buffer,
                 "Отчёт_о_тестировании.html",
                 "text/html",
