@@ -472,14 +472,14 @@ def generate_html_report(data, module_data_list, defects_df):
             <tr><td>Рекомендация:</td><td>{data['recommendation']}</td></tr>
         </table>
         
-        <!-- Диаграммы -->
+        <!-- Диаграммы -->         
         <div class="chart-container">
-            <img src="data:image/png;base64,{chart1}" alt="Распределение результатов тест-кейсов" style="max-width: 100%; height: auto;">
+            <img src="data:image/png;base64,{chart1}" alt="Распределение результатов тест-кейсов" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
             <div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
         </div>
         
         <div class="chart-container">
-            <img src="data:image/png;base64,{chart2}" alt="Дефекты по уровню серьёзности" style="max-width: 100%; height: auto;">
+            <img src="data:image/png;base64,{chart2}" alt="Дефекты по уровню серьёзности" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
             <div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
         </div>
         
@@ -766,10 +766,10 @@ if submitted:
         # ИНСТРУКЦИЯ ПО КОНВЕРТАЦИИ В PDF
         st.markdown("""
         <div style="background-color: #3f403f; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #81c784;">
-            <h4>🖨️ Как получить профессиональный PDF:</h4>
+            <h4>🖨️ Как получить PDF:</h4>
             <ol>
                 <li>Скачайте файл <strong>HTML</strong> (кнопка справа)</li>
-                <li>Откройте его в <strong>Chrome</strong> или <strong>Edge</strong></li>
+                <li>Откройте его в <strong>Chrome</strong> или <strong>любом другом браузере</strong></li>
                 <li>Нажмите <kbd>Ctrl+P</kbd> → выберите «Сохранить как PDF»</li>
                 <li>Установите:
                     <ul>
