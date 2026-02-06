@@ -71,8 +71,14 @@ def add_table_from_df(doc, df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
+def clear_table_borders(table):
+    """Убирает границы у таблицы"""
+    for row in table.rows:
+        for cell in row.cells:
+            tc = cell._element.tcPr
+            tc.clear()
+
 def generate_docx(data, module_data_list, defects_df):
-    """Генерирует DOCX-отчет с улучшенным форматированием"""
     doc = Document()
     style = doc.styles['Normal']
     font = style.font
@@ -87,16 +93,14 @@ def generate_docx(data, module_data_list, defects_df):
     title_font.bold = True
     title_font.color.rgb = RGBColor(0, 0, 0)
 
-    # === ИНФОРМАЦИОННЫЕ ПОЛЯ (в виде таблицы) ===
+    # === ИНФОРМАЦИОННЫЕ ПОЛЯ (в виде таблицы без границ) ===
     info_table = doc.add_table(rows=6, cols=2)
-    info_table.style = 'Table Grid'
-    
+    clear_table_borders(info_table)  # <<< Убираем границы
     # Устанавливаем ширину колонок
     for i in range(2):
         for row in info_table.rows:
             row.cells[i].width = Inches(3.25 if i == 0 else 3.25)
     
-    # Данные для заполнения
     fields = [
         ('Проект:', data["project"]),
         ('Тип приложения:', data["app_type"]),
@@ -106,31 +110,28 @@ def generate_docx(data, module_data_list, defects_df):
         ('Тест-инженер:', data["engineer"])
     ]
     
-    # Заполняем таблицу информацией
     for i, (label, value) in enumerate(fields):
-        cell1 = info_table.cell(i, 0)  # Левая колонка (название поля)
+        cell1 = info_table.cell(i, 0)
         cell1.text = label
-        # Исправлено: устанавливаем выравнивание для первого параграфа
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True  # Жирный шрифт для меток
+            run.font.bold = True
             run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет меток
         
-        cell2 = info_table.cell(i, 1)  # Правая колонка (значение поля)
+        cell2 = info_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)  # Черный цвет значений
+            run.font.color.rgb = RGBColor(0, 0, 0)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # === КРАТКОЕ РЕЗЮМЕ (в виде таблицы) ===
+    # === КРАТКОЕ РЕЗЮМЕ (в виде таблицы без границ) ===
     doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
     
     summary_table = doc.add_table(rows=8, cols=2)
-    summary_table.style = 'Table Grid'
+    clear_table_borders(summary_table)  # <<< Убираем границы
     
-    # Подсчет процентов
     total = data['total_tc']
     pass_pct = data['pass'] / total * 100 if total > 0 else 0
     fail_pct = 100 - pass_pct
@@ -151,19 +152,18 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True  # Жирный шрифт для меток
-            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет меток
+            run.font.bold = True
+            run.font.color.rgb = RGBColor(0, 51, 102)
         
         cell2 = summary_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)  # Черный цвет значений
+            run.font.color.rgb = RGBColor(0, 0, 0)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
     # === ДИАГРАММЫ ===
-    # Диаграмма PASS/FAIL
     plt.figure(figsize=(5, 4))
     plt.pie([data['pass'], data['fail']], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
             colors=['#4CAF50', '#F44336'], startangle=90)
@@ -171,7 +171,6 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_picture(plot_to_buffer(), width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # Диаграмма дефектов по серьезности
     plt.figure(figsize=(5, 4))
     bars = plt.bar(['Critical (S1)', 'Major (S2)'], [data['s1'], data['s2']],
                    color=['#F44336', '#FF9800'])
@@ -184,10 +183,10 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_picture(plot_to_buffer(), width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # === КОНТЕКСТ ТЕСТИРОВАНИЯ (в виде таблицы) ===
+    # === КОНТЕКСТ ТЕСТИРОВАНИЯ (в виде таблицы без границ) ===
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
     context_table = doc.add_table(rows=6, cols=2)
-    context_table.style = 'Table Grid'
+    clear_table_borders(context_table)  # <<< Убираем границы
     
     context_fields = [
         ('Устройство / Браузер:', data['device_browser']),
@@ -203,14 +202,14 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True  # Жирный шрифт для меток
-            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет меток
+            run.font.bold = True
+            run.font.color.rgb = RGBColor(0, 51, 102)
         
         cell2 = context_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)  # Черный цвет значений
+            run.font.color.rgb = RGBColor(0, 0, 0)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
@@ -234,7 +233,7 @@ def generate_docx(data, module_data_list, defects_df):
         if line.strip():
             p = doc.add_paragraph()
             p.add_run(f"• {line.strip()}").italic = True
-            p.runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый цвет
+            p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
             p.paragraph_format.space_after = Pt(2)
 
     # === ВЫВОД И РЕКОМЕНДАЦИИ ===
@@ -246,13 +245,13 @@ def generate_docx(data, module_data_list, defects_df):
         if line.strip():
             p = doc.add_paragraph()
             p.add_run(f"• {line.strip()}").italic = True
-            p.runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый цвет
+            p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
             p.paragraph_format.space_after = Pt(2)
 
-    # === ПОДПИСЬ (в виде таблицы) ===
+    # === ПОДПИСЬ (в виде таблицы без границ) ===
     doc.add_heading('7. ПОДПИСЬ', 1)
     signature_table = doc.add_table(rows=3, cols=2)
-    signature_table.style = 'Table Grid'
+    clear_table_borders(signature_table)  # <<< Убираем границы
     signature_fields = [
         ('Роль:', data['role']),
         ('ФИО:', data['fullname']),
@@ -264,16 +263,15 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True  # Жирный шрифт для меток
-            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет меток
+            run.font.bold = True
+            run.font.color.rgb = RGBColor(0, 51, 102)
         
         cell2 = signature_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)  # Черный цвет значений
+            run.font.color.rgb = RGBColor(0, 0, 0)
 
-    # === СОХРАНЕНИЕ ДОКУМЕНТА ===
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)
