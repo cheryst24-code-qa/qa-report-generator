@@ -473,12 +473,12 @@ def generate_html_report(data, module_data_list, defects_df):
             <tr><td>Рекомендация:</td><td>{data['recommendation']}</td></tr>
         </table>
         
-        <!-- === ИСПРАВЛЕНО: добавлен префикс "data:" для ОБЕИХ диаграмм === -->
+        <!-- Диаграммы -->
         <div class="chart-container">
             <img src="data:image/png;base64,{chart1}" alt="Распределение результатов тест-кейсов" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
             <div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
         </div>
-        
+    
         <div class="chart-container">
             <img src="data:image/png;base64,{chart2}" alt="Дефекты по уровню серьёзности" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
             <div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
