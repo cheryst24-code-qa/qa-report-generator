@@ -584,7 +584,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws.title = "Отчёт о тестировании"
     
     # Ширины: A=20 (метрики), B=45 (значения)
-    COL_WIDTHS = {'A': 20, 'B': 45, 'C': 16, 'D': 14, 'E': 48}
+    COL_WIDTHS = {'A': 20, 'B': 45}
     
     # Стили
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -603,6 +603,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     )
     wrap_left = Alignment(wrap_text=True, vertical="top", horizontal="left")
     wrap_center = Alignment(wrap_text=True, vertical="center", horizontal="center")
+    wrap_right = Alignment(wrap_text=True, vertical="top", horizontal="right")
     
     row = 1
     
@@ -642,7 +643,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for label, value in summary_rows:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
         ws.cell(row=row, column=1, value=label).border = thin_border
-        ws.cell(row=row, column=1, value=label).alignment = Alignment(wrap_text=True, vertical="top", horizontal="right")
+        ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
         ws.cell(row=row, column=2, value=value).border = thin_border
         ws.cell(row=row, column=2, value=value).alignment = wrap_left
@@ -682,12 +683,23 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for label, value in context_rows:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
         ws.cell(row=row, column=1, value=label).border = thin_border
-        ws.cell(row=row, column=1, value=label).alignment = Alignment(wrap_text=True, vertical="top", horizontal="right")
+        ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
         ws.cell(row=row, column=2, value=value).border = thin_border
         ws.cell(row=row, column=2, value=value).alignment = wrap_left
         row += 1
     row += 1
+    
+    # === РЕЗУЛЬТАТЫ ТЕСТОВ (оставляем 5 колонок) ===
+    # ... (ваш текущий код для таблицы тестов без изменений) ...
+    
+    # === УСТАНОВКА ШИРИН ===
+    for col_letter, width in COL_WIDTHS.items():
+        ws.column_dimensions[col_letter].width = width
+    
+    wb.save(output)
+    output.seek(0)
+    return output
     
     # === РЕЗУЛЬТАТЫ ТЕСТОВ (5 колонок) ===
     ws.merge_cells(f'A{row}:E{row}')
