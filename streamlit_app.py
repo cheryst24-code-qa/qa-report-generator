@@ -100,7 +100,7 @@ def generate_docx(data, module_data_list, defects_df):
         ('Версия приложения:', data["version"]),
         ('Период тестирования:', data["test_period"]),
         ('Дата формирования отчёта:', data["report_date"]),
-        ('Тест-инженер:', data["engineer"])
+        ('QA-инженер:', data["engineer"])
     ]
     
     for i, (label, value) in enumerate(fields):
@@ -672,7 +672,7 @@ with st.form("main_form"):
     recommendations_detailed = st.text_area("Рекомендации (подробно)", "Немедленно исправить уязвимости BUG-SEC-001 и BUG-SEC-002.\nРеализовать fuzzy search для повышения юзабилити (BUG-SEARCH-001).\nПровести повторное тестирование после фиксов с фокусом на:\n Повторную проверку полей ввода на инъекции\n Тестирование сценариев поиска с опечатками\n Настроить автоматизированную проверку безопасности (например, OWASP ZAP) в CI/CD.")
     
     st.header("7. Подпись")
-    role = st.text_input("Роль", "Тест-инженер")
+    role = st.text_input("Роль", "QA-инженер")
     fullname = st.text_input("ФИО", "Черкасов Игорь")
     signature_date = st.text_input("Дата", "30.11.2025")
 
