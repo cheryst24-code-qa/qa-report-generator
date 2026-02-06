@@ -314,263 +314,6 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     
     return chart1_base64, chart2_base64
 
-def generate_html_report(data, module_data_list, defects_df):
-    """Генерирует HTML-версию отчёта с корректными диаграммами и форматированием"""
-    # Генерация диаграмм
-    chart1, chart2 = generate_chart_base64(data['pass'], data['fail'], data['s1'], data['s2'])
-    
-    # Расчёт процентов
-    total = data['total_tc']
-    pass_pct = data['pass'] / total * 100 if total > 0 else 0
-    fail_pct = 100 - pass_pct
-    
-    # === КРИТИЧЕСКИ ВАЖНО: экранирование специальных символов в данных ===
-    def escape_html(text):
-        if not isinstance(text, str):
-            return str(text)
-        return (text.replace('&', '&amp;')
-                    .replace('<', '&lt;')
-                    .replace('>', '&gt;')
-                    .replace('"', '&quot;')
-                    .replace("'", '&#39;'))
-    
-    # Создание HTML с профессиональным форматированием
-    html = f"""<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{escape_html(data['report_title'])}</title>
-    <style>
-        body {{
-            font-family: 'Calibri Light', Times, serif;
-            font-size: 12pt;
-            line-height: 1.5;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            color: #000;
-        }}
-        h1 {{
-            text-align: center;
-            font-size: 16pt;
-            font-weight: bold;
-            margin-bottom: 25px;
-            margin-top: 0;
-        }}
-        h2 {{
-            font-size: 14pt;
-            margin-top: 25px;
-            margin-bottom: 12px;
-            padding-bottom: 4px;
-            border-bottom: 2px solid #000;
-        }}
-        h3 {{
-            font-size: 13pt;
-            margin-top: 20px;
-            margin-bottom: 10px;
-        }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin: 12px 0 18px 0;
-            page-break-inside: avoid;
-        }}
-        th, td {{
-            border: 1px solid #000;
-            padding: 8px 10px;
-            text-align: left;
-            vertical-align: top;
-        }}
-        th {{
-            background-color: #f5f5f5;
-            font-weight: bold;
-        }}
-        /* Фиксированная ширина колонок как в DOCX (25%/75%) */
-        .info-table td:first-child,
-        .summary-table td:first-child,
-        .context-table td:first-child,
-        .signature-table td:first-child {{
-            width: 25%;
-            font-weight: bold;
-            background-color: #f9f9f9;
-        }}
-        .info-table td:last-child,
-        .summary-table td:last-child,
-        .context-table td:last-child,
-        .signature-table td:last-child {{
-            width: 75%;
-        }}
-        .status-pass {{ color: #2e7d32; font-weight: bold; }}
-        .status-fail {{ color: #d32f2f; font-weight: bold; }}
-        .risk {{ color: #d32f2f; font-weight: bold; }}
-        .chart-container {{
-            text-align: center;
-            margin: 25px 0;
-            page-break-inside: avoid;
-        }}
-        .chart-title {{
-            font-weight: bold;
-            margin-top: 8px;
-            font-size: 11pt;
-        }}
-        ul {{
-            padding-left: 20px;
-            margin: 10px 0;
-        }}
-        li {{
-            margin-bottom: 5px;
-        }}
-        .no-print {{
-            display: none;
-        }}
-        @media print {{
-            body {{
-                padding: 15px;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }}
-            .chart-container img {{
-                max-width: 100% !important;
-                height: auto !important;
-            }}
-            .no-print {{
-                display: none !important;
-            }}
-            table {{
-                page-break-inside: avoid;
-            }}
-            h2, h3 {{
-                page-break-after: avoid;
-            }}
-        }}
-        @page {{
-            size: A4;
-            margin: 15mm;
-        }}
-    </style>
-</head>
-<body>
-    <h1>{escape_html(data['report_title'])}</h1>
-    
-    <!-- Информационная таблица (25%/75%) -->
-    <table class="info-table">
-        <tr><td>Проект:</td><td>{escape_html(data['project'])}</td></tr>
-        <tr><td>Тип приложения:</td><td>{escape_html(data['app_type'])}</td></tr>
-        <tr><td>Версия приложения:</td><td>{escape_html(data['version'])}</td></tr>
-        <tr><td>Период тестирования:</td><td>{escape_html(data['test_period'])}</td></tr>
-        <tr><td>Дата формирования отчёта:</td><td>{escape_html(data['report_date'])}</td></tr>
-        <tr><td>QA-инженер:</td><td>{escape_html(data['engineer'])}</td></tr>
-    </table>
-    
-    <h2>1. КРАТКОЕ РЕЗЮМЕ</h2>
-    <table class="summary-table">
-        <tr><td>Статус релиза:</td><td>{escape_html(data['release_status'])}</td></tr>
-        <tr><td>Критические дефекты (S1):</td><td>{data['s1']}</td></tr>
-        <tr><td>Мажорные дефекты (S2):</td><td>{data['s2']}</td></tr>
-        <tr><td>Всего тест-кейсов:</td><td>{data['total_tc']}</td></tr>
-        <tr><td>Успешно (Pass):</td><td class="status-pass">{data['pass']} ({pass_pct:.1f}%)</td></tr>
-        <tr><td>Упали (Fail):</td><td class="status-fail">{data['fail']} ({fail_pct:.1f}%)</td></tr>
-        <tr><td>Основной риск:</td><td class="risk">{escape_html(data['risk'])}</td></tr>
-        <tr><td>Рекомендация:</td><td>{escape_html(data['recommendation'])}</td></tr>
-    </table>
-    
-    <!-- === ГАРАНТИРОВАННО КОРРЕКТНЫЕ ДИАГРАММЫ === -->
-    <div class="chart-container">
-        <img src="data:image/png;base64,{chart1}" 
-             alt="Распределение результатов тест-кейсов" 
-             style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
-        <div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
-    </div>
-    
-    <div class="chart-container">
-        <img src="data:image/png;base64,{chart2}" 
-             alt="Дефекты по уровню серьёзности" 
-             style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
-        <div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
-    </div>
-    
-    <h2>2. КОНТЕКСТ ТЕСТИРОВАНИЯ</h2>
-    <table class="context-table">
-        <tr><td>Устройство / Браузер:</td><td>{escape_html(data['device_browser'])}</td></tr>
-        <tr><td>ОС / Платформа:</td><td>{escape_html(data['os_platform'])}</td></tr>
-        <tr><td>Сборка / Версия:</td><td>{escape_html(data['build'])}</td></tr>
-        <tr><td>Стенд:</td><td>Тестовое окружение (адрес: {escape_html(data['env_url'])})</td></tr>
-        <tr><td>Инструменты:</td><td>{escape_html(data['tools'])}</td></tr>
-        <tr><td>Методология:</td><td>{escape_html(data['methodology'])}</td></tr>
-    </table>
-"""
-    
-    # Результаты по модулям
-    html += "<h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>"
-    for idx, module_info in enumerate(module_data_list):
-        html += f"<h3>3.{idx+1}. {escape_html(module_info['title'])}</h3>"
-        html += '<table><tr><th style="width: 15%;">ID</th><th>Сценарий</th><th style="width: 12%;">Статус</th><th>Комментарий</th></tr>'
-        df = module_info['df']
-        if not df.empty:
-            for _, row in df.iterrows():
-                status_class = "status-pass" if str(row[2]).upper() == "PASS" else "status-fail" if str(row[2]).upper() == "FAIL" else ""
-                html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td class='{status_class}'>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td></tr>"
-        else:
-            html += "<tr><td colspan='4' style='text-align:center'>Нет данных</td></tr>"
-        html += "</table>"
-    
-    # Анализ дефектов
-    html += "<h2>4. АНАЛИЗ ДЕФЕКТОВ</h2>"
-    html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 15%;">Модуль</th><th>Заголовок</th><th style="width: 20%;">Серьёзность</th><th style="width: 15%;">Статус</th></tr>'
-    if not defects_df.empty:
-        for _, row in defects_df.iterrows():
-            html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td><td>{escape_html(row[4])}</td></tr>"
-    else:
-        html += "<tr><td colspan='5' style='text-align:center'>Нет данных</td></tr>"
-    html += "</table>"
-    html += f"<p><strong>Последствия:</strong><br>{escape_html(data['consequences']).replace(chr(10), '<br>')}</p>"
-    
-    # Ограничения тестирования
-    html += "<h2>5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ</h2><ul>"
-    for line in data['limitations'].split('\n'):
-        if line.strip():
-            html += f"<li>{escape_html(line.strip())}</li>"
-    html += "</ul>"
-    
-    # Вывод и рекомендации
-    html += f"""
-        <h2>6. ВЫВОД И РЕКОМЕНДАЦИИ</h2>
-        <p><strong>Вывод:</strong><br>{escape_html(data['conclusion'])}</p>
-        <p><strong>Рекомендации:</strong></p>
-        <ul>
-    """
-    for line in data['recommendations_detailed'].split('\n'):
-        if line.strip():
-            html += f"<li>{escape_html(line.strip())}</li>"
-    html += "</ul>"
-    
-    # Подпись
-    html += f"""
-        <h2>7. ПОДПИСЬ</h2>
-        <table class="signature-table">
-            <tr><td>Роль:</td><td>{escape_html(data['role'])}</td></tr>
-            <tr><td>ФИО:</td><td>{escape_html(data['fullname'])}</td></tr>
-            <tr><td>Дата:</td><td>{escape_html(data['signature_date'])}</td></tr>
-        </table>
-        
-        <div class="no-print" style="margin-top: 30px; padding: 15px; background-color: #e3f2fd; border-radius: 5px; border: 1px solid #90caf9;">
-            <h3 style="margin-top: 0;">💡 Как сохранить отчёт как PDF:</h3>
-            <ol>
-                <li>Нажмите <strong>Ctrl+P</strong> (Windows) или <strong>Cmd+P</strong> (Mac)</li>
-                <li>Выберите «Сохранить как PDF»</li>
-                <li>Установите ориентацию «Книжная», масштаб «100%»</li>
-                <li>Нажмите «Сохранить»</li>
-            </ol>
-        </div>
-    </body>
-</html>"""
-    
-    buffer = io.BytesIO()
-    buffer.write(html.encode('utf-8'))
-    buffer.seek(0)
-    return buffer
-
 def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     """Генерирует профессиональный XLSX-отчёт с корректной структурой"""
     from io import BytesIO
@@ -590,13 +333,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     section_fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")
     context_fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
-    defects_fill = PatternFill(start_color="7030A0", end_color="7030A0", fill_type="solid")
-    notes_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
-    signature_fill = PatternFill(start_color="333333", end_color="333333", fill_type="solid")
-    pass_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-    fail_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-    critical_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-    major_fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
         top=Side(style='thin'), bottom=Side(style='thin')
@@ -618,13 +354,13 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     row += 2
     
     # === СВОДКА (2 колонки) ===
-    ws.merge_cells(f'A{row}:B{row}')
+    ws.merge_cells(f'A{row}:B{row}')  # ← КРИТИЧЕСКИ ВАЖНО: объединяем обе колонки!
     cell = ws.cell(row=row, column=1, value="📊 КЛЮЧЕВЫЕ МЕТРИКИ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = section_fill
     cell.alignment = wrap_center
     for col in range(1, 3):
-        ws.cell(row=row, column=col).border = thin_border
+        ws.cell(row=row, column=col).border = thin_border  # ← Границы для обеих колонок
     row += 1
     
     summary_rows = [
@@ -641,32 +377,36 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ]
     
     for label, value in summary_rows:
-        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
-        ws.cell(row=row, column=1, value=label).border = thin_border
-        ws.cell(row=row, column=1, value=label).alignment = wrap_right
+        # Метрика (колонка A)
+        cell_label = ws.cell(row=row, column=1, value=label)
+        cell_label.font = Font(bold=True)
+        cell_label.border = thin_border
+        cell_label.alignment = wrap_right
         
-        ws.cell(row=row, column=2, value=value).border = thin_border
-        ws.cell(row=row, column=2, value=value).alignment = wrap_left
+        # Значение (колонка B)
+        cell_value = ws.cell(row=row, column=2, value=value)
+        cell_value.border = thin_border
+        cell_value.alignment = wrap_left  # ← АВТОПЕРЕНОС для длинных значений
         
         # Подсветка статуса
         if "НЕ РЕКОМЕНДОВАН" in str(value):
-            ws.cell(row=row, column=2, value=value).fill = critical_fill
-            ws.cell(row=row, column=2, value=value).font = Font(color="FFFFFF", bold=True)
+            cell_value.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+            cell_value.font = Font(color="FFFFFF", bold=True)
         elif "РЕКОМЕНДОВАН" in str(value):
-            ws.cell(row=row, column=2, value=value).fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")
-            ws.cell(row=row, column=2, value=value).font = Font(color="FFFFFF", bold=True)
+            cell_value.fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")
+            cell_value.font = Font(color="FFFFFF", bold=True)
         
         row += 1
     row += 1
     
     # === КОНТЕКСТ (2 колонки) ===
-    ws.merge_cells(f'A{row}:B{row}')
+    ws.merge_cells(f'A{row}:B{row}')  # ← Объединяем обе колонки!
     cell = ws.cell(row=row, column=1, value="⚙️ КОНТЕКСТ ТЕСТИРОВАНИЯ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = context_fill
     cell.alignment = wrap_center
     for col in range(1, 3):
-        ws.cell(row=row, column=col).border = thin_border
+        ws.cell(row=row, column=col).border = thin_border  # ← Границы для обеих колонок
     row += 1
     
     context_rows = [
@@ -686,12 +426,11 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
         ws.cell(row=row, column=2, value=value).border = thin_border
-        ws.cell(row=row, column=2, value=value).alignment = wrap_left
+        ws.cell(row=row, column=2, value=value).alignment = wrap_left  # ← АВТОПЕРЕНОС
         row += 1
     row += 1
     
-    
-    # === РЕЗУЛЬТАТЫ ТЕСТОВ (5 колонок) ===
+    # === РЕЗУЛЬТАТЫ ТЕСТОВ ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="✅ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -717,31 +456,40 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         df = module_info['df']
         if not df.empty:
             for _, test_row in df.iterrows():
-                ws.cell(row=row, column=1, value=module_name).border = thin_border
-                ws.cell(row=row, column=1, value=module_name).alignment = wrap_left
+                # Модуль
+                cell = ws.cell(row=row, column=1, value=module_name)
+                cell.border = thin_border
+                cell.alignment = wrap_left
                 
-                ws.cell(row=row, column=2, value=test_row[0]).border = thin_border
-                ws.cell(row=row, column=2, value=test_row[0]).alignment = wrap_left
+                # ID
+                cell = ws.cell(row=row, column=2, value=test_row[0])
+                cell.border = thin_border
+                cell.alignment = wrap_left
                 
-                ws.cell(row=row, column=3, value=test_row[1]).border = thin_border
-                ws.cell(row=row, column=3, value=test_row[1]).alignment = wrap_left
+                # Сценарий
+                cell = ws.cell(row=row, column=3, value=test_row[1])
+                cell.border = thin_border
+                cell.alignment = wrap_left
                 
-                status_cell = ws.cell(row=row, column=4, value=test_row[2])
-                status_cell.border = thin_border
-                status_cell.alignment = wrap_center
+                # Статус
+                cell = ws.cell(row=row, column=4, value=test_row[2])
+                cell.border = thin_border
+                cell.alignment = wrap_center
                 if str(test_row[2]).upper() == "PASS":
-                    status_cell.fill = pass_fill
-                    status_cell.font = Font(color="006100", bold=True)
+                    cell.fill = pass_fill
+                    cell.font = Font(color="006100", bold=True)
                 elif str(test_row[2]).upper() == "FAIL":
-                    status_cell.fill = fail_fill
-                    status_cell.font = Font(color="9C0006", bold=True)
+                    cell.fill = fail_fill
+                    cell.font = Font(color="9C0006", bold=True)
                 
-                ws.cell(row=row, column=5, value=test_row[3]).border = thin_border
-                ws.cell(row=row, column=5, value=test_row[3]).alignment = wrap_left
+                # Комментарий
+                cell = ws.cell(row=row, column=5, value=test_row[3])
+                cell.border = thin_border
+                cell.alignment = wrap_left
                 row += 1
     row += 1
     
-    # === ДЕФЕКТЫ (5 колонок) ===
+    # === ДЕФЕКТЫ ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="🐞 АНАЛИЗ ДЕФЕКТОВ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -751,6 +499,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.cell(row=row, column=col).border = thin_border
     row += 1
     
+    # Заголовки дефектов
     defect_headers = ["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"]
     for col_idx, header in enumerate(defect_headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)
@@ -760,12 +509,19 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell.alignment = wrap_center
     row += 1
     
+    # Данные дефектов
     if not defects_df.empty:
         for _, defect_row in defects_df.iterrows():
             for col_idx, value in enumerate(defect_row, start=1):
                 cell = ws.cell(row=row, column=col_idx, value=value)
                 cell.border = thin_border
-                cell.alignment = wrap_left if col_idx in (3, 5) else wrap_center
+                # Для длинных полей (Заголовок, Статус) — левое выравнивание с переносом
+                if col_idx in (3, 5):
+                    cell.alignment = wrap_left
+                else:
+                    cell.alignment = wrap_center
+                
+                # Подсветка серьёзности
                 if col_idx == 4:  # Серьёзность
                     sev = str(value)
                     if "Critical" in sev:
@@ -783,10 +539,117 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         row += 1
     row += 1
     
-    # === ОСТАЛЬНЫЕ СЕКЦИИ (Ограничения, Вывод, Рекомендации, Подпись) ===
-    # ... (оставьте как в вашем текущем коде, но используйте 5 колонок A-E) ...
+    # === ОГРАНИЧЕНИЯ, ВЫВОД, РЕКОМЕНДАЦИИ ===
+    sections = [
+        ("⚠️ ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ", data["limitations"]),
+        ("💡 ВЫВОД", data["conclusion"]),
+        ("📌 РЕКОМЕНДАЦИИ", data["recommendations_detailed"]),
+    ]
     
-    # === УСТАНОВКА ШИРИН ===
+    for title, content in sections:
+        ws.merge_cells(f'A{row}:E{row}')
+        cell = ws.cell(row=row, column=1, value=title)
+        cell.font = Font(bold=True, size=12, color="FFFFFF")
+        cell.fill = notes_fill
+        cell.alignment = wrap_center
+        for col in range(1, 6):
+            ws.cell(row=row, column=col).border = thin_border
+        row += 1
+        
+        for line in content.split('\n'):
+            if line.strip():
+                ws.merge_cells(f'A{row}:E{row}')
+                cell = ws.cell(row=row, column=1, value=f"• {line.strip()}")
+                cell.border = thin_border
+                cell.alignment = wrap_left  # АВТОПЕРЕНОС ДЛЯ СПИСКОВ
+                row += 1
+        row += 1
+    
+    # === ПОДПИСЬ ===
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="Подпись")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = signature_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    # Заголовки подписи
+    for col_idx, header in enumerate(["Параметр", "Значение"], start=1):
+        cell = ws.cell(row=row, column=col_idx, value=header)
+        cell.font = Font(bold=True)
+        cell.border = thin_border
+        cell.alignment = wrap_center
+    row += 1
+    
+    signature_rows = [
+        ["Роль", data["role"]],
+        ["ФИО", data["fullname"]],
+        ["Дата", data["signature_date"]],
+    ]
+    
+    for label, value in signature_rows:
+        cell_label = ws.cell(row=row, column=1, value=label)
+        cell_label.font = Font(bold=True)
+        cell_label.border = thin_border
+        cell_label.alignment = wrap_right
+        
+        cell_value = ws.cell(row=row, column=2, value=value)
+        cell_value.border = thin_border
+        cell_value.alignment = wrap_left
+        row += 1
+    
+    # === ДАННЫЕ ДЛЯ ДИАГРАММ ===
+    row += 2
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="📈 ДАННЫЕ ДЛЯ ДИАГРАММ (выделите диапазон → Вставка → Диаграмма)")
+    cell.font = Font(italic=True, bold=True, color="1E90FF")
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    # PASS/FAIL
+    ws.cell(row=row, column=1, value="Тип").font = Font(bold=True)
+    ws.cell(row=row, column=2, value="Количество").font = Font(bold=True)
+    for col in range(1, 3):
+        ws.cell(row=row, column=col).border = thin_border
+        ws.cell(row=row, column=col).alignment = wrap_center
+    row += 1
+    
+    ws.cell(row=row, column=1, value="PASS").fill = pass_fill
+    ws.cell(row=row, column=1, value="PASS").alignment = wrap_center
+    ws.cell(row=row, column=2, value=data['pass']).border = thin_border
+    ws.cell(row=row, column=2, value=data['pass']).alignment = wrap_center
+    row += 1
+    
+    ws.cell(row=row, column=1, value="FAIL").fill = fail_fill
+    ws.cell(row=row, column=1, value="FAIL").alignment = wrap_center
+    ws.cell(row=row, column=2, value=data['fail']).border = thin_border
+    ws.cell(row=row, column=2, value=data['fail']).alignment = wrap_center
+    row += 2
+    
+    # Дефекты
+    ws.cell(row=row, column=1, value="Серьёзность").font = Font(bold=True)
+    ws.cell(row=row, column=2, value="Количество").font = Font(bold=True)
+    for col in range(1, 3):
+        ws.cell(row=row, column=col).border = thin_border
+        ws.cell(row=row, column=col).alignment = wrap_center
+    row += 1
+    
+    ws.cell(row=row, column=1, value="Critical (S1)").fill = critical_fill
+    ws.cell(row=row, column=1, value="Critical (S1)").alignment = wrap_center
+    ws.cell(row=row, column=2, value=data['s1']).border = thin_border
+    ws.cell(row=row, column=2, value=data['s1']).alignment = wrap_center
+    row += 1
+    
+    ws.cell(row=row, column=1, value="Major (S2)").fill = major_fill
+    ws.cell(row=row, column=1, value="Major (S2)").alignment = wrap_center
+    ws.cell(row=row, column=2, value=data['s2']).border = thin_border
+    ws.cell(row=row, column=2, value=data['s2']).alignment = wrap_center
+    
+    # === УСТАНОВКА ШИРИН КОЛОНОК ===
     for col_letter, width in COL_WIDTHS.items():
         ws.column_dimensions[col_letter].width = width
     
