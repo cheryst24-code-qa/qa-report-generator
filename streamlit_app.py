@@ -246,15 +246,18 @@ def generate_pdf(data, module_data_list, defects_df):
 
     # Модули
     story.append(Paragraph('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', styles['Heading2']))
-    for idx, module_info in enumerate(module_data_list):
+    for idx in range(len(module_data_list)):
+        module_info = module_data_list[idx]
         story.append(Paragraph(f'3.{idx+1}. {module_info["title"]}', styles['Heading3']))
         
         df_cleaned = module_info['df'].fillna('')
         table_data = [df_cleaned.columns.tolist()]
+        
         for i in range(len(df_cleaned)):
             row = []
-            for col in df_cleaned.columns:
-                val = df_cleaned.iloc[i][col]
+            for j in range(len(df_cleaned.columns)):
+                col_name = df_cleaned.columns[j]
+                val = df_cleaned.iloc[i][col_name]
                 row.append(str(val))
             table_data.append(row)
         
@@ -285,10 +288,12 @@ def generate_pdf(data, module_data_list, defects_df):
     
     defects_df_cleaned = defects_df.fillna('')
     defects_data = [defects_df_cleaned.columns.tolist()]
+    
     for i in range(len(defects_df_cleaned)):
         row = []
-        for col in defects_df_cleaned.columns:
-            val = defects_df_cleaned.iloc[i][col]
+        for j in range(len(defects_df_cleaned.columns)):
+            col_name = defects_df_cleaned.columns[j]
+            val = defects_df_cleaned.iloc[i][col_name]
             row.append(str(val))
         defects_data.append(row)
     
