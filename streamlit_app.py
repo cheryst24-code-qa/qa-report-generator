@@ -555,7 +555,7 @@ def generate_html_report(data, module_data_list, defects_df):
             <tr><td>Дата:</td><td>{escape_html(data['signature_date'])}</td></tr>
         </table>
         
-        <div class="no-print" style="margin-top: 30px; padding: 15px; background-color: #3f403f; border-radius: 5px; border: 1px solid #90caf9;">
+        <div class="no-print" style="margin-top: 30px; padding: 15px; background-color: #e3f2fd; border-radius: 5px; border: 1px solid #90caf9;">
             <h3 style="margin-top: 0;">💡 Как сохранить отчёт как PDF:</h3>
             <ol>
                 <li>Нажмите <strong>Ctrl+P</strong> (Windows) или <strong>Cmd+P</strong> (Mac)</li>
@@ -762,7 +762,7 @@ if submitted:
         
         # ИНСТРУКЦИЯ
         st.markdown("""
-        <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #81c784;">
+        <div style="background-color: #3f403f; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #81c784;">
             <h4>🖨️ Как получить профессиональный PDF:</h4>
             <ol>
                 <li>Скачайте файл <strong>HTML</strong></li>
