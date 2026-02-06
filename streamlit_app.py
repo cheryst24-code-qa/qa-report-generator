@@ -12,10 +12,6 @@ import matplotlib.pyplot as plt
 import io
 import base64
 import traceback
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.utils import get_column_letter
 
 def set_col_width(col, width_twips):
     """Устанавливает ширину колонки в таблице DOCX"""
@@ -76,23 +72,28 @@ def add_table_from_df(doc, df):
 def generate_docx(data, module_data_list, defects_df):
     """Генерирует строго деловой DOCX-отчёт"""
     doc = Document()
-    doc.styles['Normal'].font.name = 'Calibri Light'  # type: ignore
-    doc.styles['Normal'].font.size = Pt(12)  # type: ignore
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Calibri Light'
+    font.size = Pt(12)
     
+    # ЗАГОЛОВОК
     title = doc.add_heading(data["report_title"], 0)
     title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
     title_font = title.runs[0].font
     title_font.size = Pt(16)
     title_font.bold = True
 
-    total_width_twips = Inches(6.5).twips
-    first_col_width_twips = int(total_width_twips * 0.25)
-    second_col_width_twips = int(total_width_twips * 0.75)
-
+    # ИНФОРМАЦИОННЫЕ ПОЛЯ
     info_table = doc.add_table(rows=6, cols=2)
     info_table.style = 'Table Grid'
-    set_col_width(info_table.columns[0], first_col_width_twips)
-    set_col_width(info_table.columns[1], second_col_width_twips)
+    total_width = Inches(6.5)
+    first_col_width = total_width * 0.25
+    second_col_width = total_width * 0.75
+    
+    for row in info_table.rows:
+        row.cells[0].width = first_col_width
+        row.cells[1].width = second_col_width
     
     fields = [
         ('Проект:', data["project"]),
@@ -108,7 +109,7 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True  # type: ignore
+            run.font.bold = True
         
         cell2 = info_table.cell(i, 1)
         cell2.text = value
@@ -116,12 +117,15 @@ def generate_docx(data, module_data_list, defects_df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
+    # КРАТКОЕ РЕЗЮМЕ
     doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
     
     summary_table = doc.add_table(rows=8, cols=2)
     summary_table.style = 'Table Grid'
-    set_col_width(summary_table.columns[0], first_col_width_twips)
-    set_col_width(summary_table.columns[1], second_col_width_twips)
+    
+    for row in summary_table.rows:
+        row.cells[0].width = first_col_width
+        row.cells[1].width = second_col_width
     
     total = data['total_tc']
     pass_pct = data['pass'] / total * 100 if total > 0 else 0
@@ -143,7 +147,7 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True  # type: ignore
+            run.font.bold = True
         
         cell2 = summary_table.cell(i, 1)
         cell2.text = value
@@ -151,6 +155,7 @@ def generate_docx(data, module_data_list, defects_df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
+    # ДИАГРАММЫ (гарантированно работают в Streamlit Cloud)
     plt.figure(figsize=(5, 4))
     plt.pie([data['pass'], data['fail']], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
             colors=['#4CAF50', '#F44336'], startangle=90)
@@ -180,11 +185,14 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_picture(buf, width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
+    # КОНТЕКСТ ТЕСТИРОВАНИЯ
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
     context_table = doc.add_table(rows=6, cols=2)
     context_table.style = 'Table Grid'
-    set_col_width(context_table.columns[0], first_col_width_twips)
-    set_col_width(context_table.columns[1], second_col_width_twips)
+    
+    for row in context_table.rows:
+        row.cells[0].width = first_col_width
+        row.cells[1].width = second_col_width
     
     context_fields = [
         ('Устройство / Браузер:', data['device_browser']),
@@ -200,7 +208,7 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True  # type: ignore
+            run.font.bold = True
         
         cell2 = context_table.cell(i, 1)
         cell2.text = value
@@ -208,6 +216,7 @@ def generate_docx(data, module_data_list, defects_df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
+    # РЕЗУЛЬТАТЫ ПО МОДУЛЯМ
     doc.add_heading('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', 1)
     for idx, module_info in enumerate(module_data_list):
         title = module_info['title']
@@ -215,12 +224,14 @@ def generate_docx(data, module_data_list, defects_df):
         doc.add_heading(f'3.{idx+1}. {title}', 2)
         add_table_from_df(doc, df)
 
+    # АНАЛИЗ ДЕФЕКТОВ
     doc.add_heading('4. АНАЛИЗ ДЕФЕКТОВ', 1)
     add_table_from_df(doc, defects_df)
 
     doc.add_paragraph('Последствия:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['consequences']).paragraph_format.space_after = Pt(6)
 
+    # ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ
     doc.add_heading('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', 1)
     for line in data['limitations'].split('\n'):
         if line.strip():
@@ -228,6 +239,7 @@ def generate_docx(data, module_data_list, defects_df):
             p.add_run(f"• {line.strip()}")
             p.paragraph_format.space_after = Pt(2)
 
+    # ВЫВОД И РЕКОМЕНДАЦИИ
     doc.add_heading('6. ВЫВОД И РЕКОМЕНДАЦИИ', 1)
     doc.add_paragraph('Вывод:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['conclusion']).paragraph_format.space_after = Pt(6)
@@ -238,11 +250,14 @@ def generate_docx(data, module_data_list, defects_df):
             p.add_run(f"• {line.strip()}")
             p.paragraph_format.space_after = Pt(2)
 
+    # ПОДПИСЬ
     doc.add_heading('7. ПОДПИСЬ', 1)
     signature_table = doc.add_table(rows=3, cols=2)
     signature_table.style = 'Table Grid'
-    set_col_width(signature_table.columns[0], first_col_width_twips)
-    set_col_width(signature_table.columns[1], second_col_width_twips)
+    
+    for row in signature_table.rows:
+        row.cells[0].width = first_col_width
+        row.cells[1].width = second_col_width
     
     signature_fields = [
         ('Роль:', data['role']),
@@ -255,7 +270,7 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True  # type: ignore
+            run.font.bold = True
         
         cell2 = signature_table.cell(i, 1)
         cell2.text = value
@@ -268,6 +283,7 @@ def generate_docx(data, module_data_list, defects_df):
 
 def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     """Генерирует диаграммы и возвращает их как корректные base64 строки"""
+    # Диаграмма 1: Распределение результатов
     plt.figure(figsize=(6, 4.5))
     plt.pie([pass_count, fail_count], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
             colors=['#4CAF50', '#F44336'], startangle=90, textprops={'fontsize': 11})
@@ -276,6 +292,7 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     plt.savefig(buf1, format='png', dpi=150, bbox_inches='tight', facecolor='white')
     plt.close()
     
+    # Диаграмма 2: Дефекты по серьёзности
     plt.figure(figsize=(6, 4.5))
     bars = plt.bar(['Critical (S1)', 'Major (S2)'], [s1_count, s2_count],
                    color=['#F44336', '#FF9800'], width=0.5)
@@ -425,6 +442,7 @@ def generate_html_report(data, module_data_list, defects_df):
 <body>
     <h1>{escape_html(data['report_title'])}</h1>
     
+    <!-- Информационная таблица (25%/75%) -->
     <table class="info-table">
         <tr><td>Проект:</td><td>{escape_html(data['project'])}</td></tr>
         <tr><td>Тип приложения:</td><td>{escape_html(data['app_type'])}</td></tr>
@@ -446,6 +464,7 @@ def generate_html_report(data, module_data_list, defects_df):
         <tr><td>Рекомендация:</td><td>{escape_html(data['recommendation'])}</td></tr>
     </table>
     
+    <!-- === ГАРАНТИРОВАННО КОРРЕКТНЫЕ ДИАГРАММЫ === -->
     <div class="chart-container">
         <img src="data:image/png;base64,{chart1}" 
              alt="Распределение результатов тест-кейсов" 
@@ -454,7 +473,7 @@ def generate_html_report(data, module_data_list, defects_df):
     </div>
     
     <div class="chart-container">
-        <img src="image/png;base64,{chart2}" 
+        <img src="data:image/png;base64,{chart2}" 
              alt="Дефекты по уровню серьёзности" 
              style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
         <div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
@@ -471,6 +490,7 @@ def generate_html_report(data, module_data_list, defects_df):
     </table>
 """
     
+    # Результаты по модулям
     html += "<h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>"
     for idx, module_info in enumerate(module_data_list):
         html += f"<h3>3.{idx+1}. {escape_html(module_info['title'])}</h3>"
@@ -484,6 +504,7 @@ def generate_html_report(data, module_data_list, defects_df):
             html += "<tr><td colspan='4' style='text-align:center'>Нет данных</td></tr>"
         html += "</table>"
     
+    # Анализ дефектов
     html += "<h2>4. АНАЛИЗ ДЕФЕКТОВ</h2>"
     html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 15%;">Модуль</th><th>Заголовок</th><th style="width: 20%;">Серьёзность</th><th style="width: 15%;">Статус</th></tr>'
     if not defects_df.empty:
@@ -494,12 +515,14 @@ def generate_html_report(data, module_data_list, defects_df):
     html += "</table>"
     html += f"<p><strong>Последствия:</strong><br>{escape_html(data['consequences']).replace(chr(10), '<br>')}</p>"
     
+    # Ограничения тестирования
     html += "<h2>5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ</h2><ul>"
     for line in data['limitations'].split('\n'):
         if line.strip():
             html += f"<li>{escape_html(line.strip())}</li>"
     html += "</ul>"
     
+    # Вывод и рекомендации
     html += f"""
         <h2>6. ВЫВОД И РЕКОМЕНДАЦИИ</h2>
         <p><strong>Вывод:</strong><br>{escape_html(data['conclusion'])}</p>
@@ -511,6 +534,7 @@ def generate_html_report(data, module_data_list, defects_df):
             html += f"<li>{escape_html(line.strip())}</li>"
     html += "</ul>"
     
+    # Подпись
     html += f"""
         <h2>7. ПОДПИСЬ</h2>
         <table class="signature-table">
@@ -522,6 +546,8 @@ def generate_html_report(data, module_data_list, defects_df):
         <div class="no-print" style="margin-top: 30px; padding: 15px; background-color: #e3f2fd; border-radius: 5px; border: 1px solid #90caf9;">
             <h3 style="margin-top: 0;">💡 Как сохранить отчёт как PDF:</h3>
             <ol>
+                <li>Скачайте файл <strong>HTML</strong></li>
+                <li>Откройте в <strong>браузере</strong></li>
                 <li>Нажмите <strong>Ctrl+P</strong> (Windows) или <strong>Cmd+P</strong> (Mac)</li>
                 <li>Выберите «Сохранить как PDF»</li>
                 <li>Установите ориентацию «Книжная», масштаб «100%»</li>
@@ -537,7 +563,7 @@ def generate_html_report(data, module_data_list, defects_df):
     return buffer
 
 def generate_xlsx_single_sheet(data, module_data_list, defects_df):
-    """Генерирует профессиональный XLSX-отчёт без границ в текстовых секциях"""
+    """Генерирует XLSX-отчёт без границ в текстовых секциях"""
     from io import BytesIO
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -548,14 +574,19 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws = wb.active
     ws.title = "Отчёт о тестировании"
 
-    # Ширины колонок (оптимизированы)
-    COL_WIDTHS = {'A': 22, 'B': 91}  # Одна колонка для метрик, одна — для значений
+    # Ширины колонок
+    COL_WIDTHS = {'A': 25, 'B': 95}
 
-    # Стили
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     section_fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")
     context_fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
+    defects_fill = PatternFill(start_color="7030A0", end_color="7030A0", fill_type="solid")
+    notes_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
     signature_fill = PatternFill(start_color="333333", end_color="333333", fill_type="solid")
+    pass_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    fail_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    critical_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+    major_fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
         top=Side(style='thin'), bottom=Side(style='thin')
@@ -566,7 +597,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
 
     row = 1
 
-    # === ЗАГОЛОВОК (с границами) ===
+    # === ЗАГОЛОВОК ===
     ws.merge_cells(f'A{row}:B{row}')
     cell = ws.cell(row=row, column=1, value=data["report_title"])
     cell.font = Font(name='Calibri', size=16, bold=True, color="FFFFFF")
@@ -582,7 +613,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = section_fill
     cell.alignment = wrap_center
-    # ← НЕТ ГРАНИЦ У ЗАГОЛОВКА СЕКЦИИ
     row += 1
 
     summary_rows = [
@@ -601,16 +631,13 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for label, value in summary_rows:
         cell_label = ws.cell(row=row, column=1, value=label)
         cell_label.font = Font(bold=True)
-        # ← НЕТ ГРАНИЦ У ЯЧЕЕК
         cell_label.alignment = wrap_right
 
         cell_value = ws.cell(row=row, column=2, value=value)
-        # ← НЕТ ГРАНИЦ У ЯЧЕЕК
         cell_value.alignment = wrap_left
 
-        # Подсветка статуса
         if "НЕ РЕКОМЕНДОВАН" in str(value):
-            cell_value.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+            cell_value.fill = critical_fill
             cell_value.font = Font(color="FFFFFF", bold=True)
         elif "РЕКОМЕНДОВАН" in str(value):
             cell_value.fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")
@@ -625,7 +652,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = context_fill
     cell.alignment = wrap_center
-    # ← НЕТ ГРАНИЦ
     row += 1
 
     context_rows = [
@@ -640,34 +666,24 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ]
 
     for label, value in context_rows:
-        cell_param = ws.cell(row=row, column=1, value=label)
-        cell_param.font = Font(bold=True)
-        # ← НЕТ ГРАНИЦ
-        cell_param.alignment = wrap_right
+        cell_label = ws.cell(row=row, column=1, value=label)
+        cell_label.font = Font(bold=True)
+        cell_label.alignment = wrap_right
 
         cell_value = ws.cell(row=row, column=2, value=value)
-        # ← НЕТ ГРАНИЦ
         cell_value.alignment = wrap_left
         row += 1
     row += 1
 
-    # === РЕЗУЛЬТАТЫ ТЕСТОВ (с границами — как таблица) ===
-    ws.merge_cells(f'A{row}:B{row}')
+    # === РЕЗУЛЬТАТЫ ТЕСТОВ (с границами!) ===
+    ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="✅ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = section_fill
     cell.alignment = wrap_center
-    for col in range(1, 3):
+    for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
     row += 1
-
-    # Здесь начинается 5-колоночная структура
-    # Восстановим исходные колонки A-E
-    ws.column_dimensions['A'].width = 18
-    ws.column_dimensions['B'].width = 14
-    ws.column_dimensions['C'].width = 32
-    ws.column_dimensions['D'].width = 12
-    ws.column_dimensions['E'].width = 45
 
     test_headers = ["Модуль", "ID", "Сценарий", "Статус", "Комментарий"]
     for col_idx, header in enumerate(test_headers, start=1):
@@ -684,27 +700,34 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         if not df.empty:
             for _, test_row in df.iterrows():
                 ws.cell(row=row, column=1, value=module_name).border = thin_border
+                ws.cell(row=row, column=1, value=module_name).alignment = wrap_left
+                
                 ws.cell(row=row, column=2, value=test_row[0]).border = thin_border
+                ws.cell(row=row, column=2, value=test_row[0]).alignment = wrap_center
+                
                 ws.cell(row=row, column=3, value=test_row[1]).border = thin_border
+                ws.cell(row=row, column=3, value=test_row[1]).alignment = wrap_left
                 
                 status_cell = ws.cell(row=row, column=4, value=test_row[2])
                 status_cell.border = thin_border
+                status_cell.alignment = wrap_center
                 if str(test_row[2]).upper() == "PASS":
-                    status_cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+                    status_cell.fill = pass_fill
                     status_cell.font = Font(color="006100", bold=True)
                 elif str(test_row[2]).upper() == "FAIL":
-                    status_cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+                    status_cell.fill = fail_fill
                     status_cell.font = Font(color="9C0006", bold=True)
                 
                 ws.cell(row=row, column=5, value=test_row[3]).border = thin_border
+                ws.cell(row=row, column=5, value=test_row[3]).alignment = wrap_left
                 row += 1
     row += 1
 
-    # === ДЕФЕКТЫ (с границами — как таблица) ===
+    # === ДЕФЕКТЫ (с границами!) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="🐞 АНАЛИЗ ДЕФЕКТОВ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
-    cell.fill = PatternFill(start_color="7030A0", end_color="7030A0", fill_type="solid")
+    cell.fill = defects_fill
     cell.alignment = wrap_center
     for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
@@ -728,10 +751,10 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 if col_idx == 4:
                     sev = str(value)
                     if "Critical" in sev:
-                        cell.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+                        cell.fill = critical_fill
                         cell.font = Font(color="FFFFFF", bold=True)
                     elif "Major" in sev:
-                        cell.fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
+                        cell.fill = major_fill
                         cell.font = Font(color="FFFFFF", bold=True)
             row += 1
     else:
@@ -742,7 +765,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         row += 1
     row += 1
 
-    # === ОСТАЛЬНЫЕ СЕКЦИИ (без границ у текста) ===
+    # === ОСТАЛЬНЫЕ СЕКЦИИ (границы только у заголовков) ===
     sections = [
         ("⚠️ ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ", data["limitations"]),
         ("💡 ВЫВОД", data["conclusion"]),
@@ -753,9 +776,8 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.merge_cells(f'A{row}:E{row}')
         cell = ws.cell(row=row, column=1, value=title)
         cell.font = Font(bold=True, size=12, color="FFFFFF")
-        cell.fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+        cell.fill = notes_fill
         cell.alignment = wrap_center
-        # ← Границы только у заголовка (по вашему требованию)
         for col in range(1, 6):
             ws.cell(row=row, column=col).border = thin_border
         row += 1
@@ -764,7 +786,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
             if line.strip():
                 ws.merge_cells(f'A{row}:E{row}')
                 cell = ws.cell(row=row, column=1, value=f"• {line.strip()}")
-                # ← НЕТ ГРАНИЦ У ТЕКСТА
                 cell.alignment = wrap_left
                 row += 1
         row += 1
@@ -775,7 +796,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = signature_fill
     cell.alignment = wrap_center
-    # ← НЕТ ГРАНИЦ
     row += 1
 
     signature_rows = [
@@ -785,13 +805,11 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ]
 
     for label, value in signature_rows:
-        cell_param = ws.cell(row=row, column=1, value=label)
-        cell_param.font = Font(bold=True)
-        # ← НЕТ ГРАНИЦ
-        cell_param.alignment = wrap_right
+        cell_label = ws.cell(row=row, column=1, value=label)
+        cell_label.font = Font(bold=True)
+        cell_label.alignment = wrap_right
 
         cell_value = ws.cell(row=row, column=2, value=value)
-        # ← НЕТ ГРАНИЦ
         cell_value.alignment = wrap_left
         row += 1
 
@@ -803,6 +821,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     output.seek(0)
     return output
 
+# === ДАННЫЕ ПО УМОЛЧАНИЮ ===
 default_modules = [
     {"title": "Главный экран и навигация", "df": pd.DataFrame([
         ["MAIN-01", "Отображение карточек товаров", "PASS", "—"],
@@ -835,9 +854,11 @@ default_defects = pd.DataFrame([
     ["BUG-SEC-002", "Безопасность", "Уязвимость к XSS-атакам в поле поиска", "Critical (S1)", "New"]
 ], columns=["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"])
 
+# === ИНТЕРФЕЙС STREAMLIT ===
 st.set_page_config(page_title="Универсальный генератор QA-отчёта", layout="wide")
 st.title("📄 Универсальный генератор отчёта о тестировании")
 
+# === ФОРМА ВВОДА ===
 with st.form("main_form"):
     report_title = st.text_input(
         "Название отчёта",
@@ -897,7 +918,7 @@ with st.form("main_form"):
     
     st.header("6. Вывод и рекомендации")
     conclusion = st.text_area("Вывод", "Сборка 241006.001 содержит критические уязвимости безопасности, делающие её непригодной для выпуска в production. Наличие S1 дефектов нарушает базовые принципы защиты данных пользователей.")
-    recommendations_detailed = st.text_area("Рекомендации (подробно)", "Немедленно исправить уязвимости BUG-SEC-001 и BUG-SEC-002.\nРеализовать fuzzy search для повышения юзабилити (BUG-SEARCH-001).\nПровести повторное тестирование после фиксов с фокусом на:\n- Повторную проверку полей ввода на инъекции\n- Тестирование сценариев поиска с опечатками\n- Настроить автоматизированную проверку безопасности (например, OWASP ZAP) в CI/CD.")
+    recommendations_detailed = st.text_area("Рекомендации (подробно)", "Немедленно исправить уязвимости BUG-SEC-001 и BUG-SEC-002.\nРеализовать fuzzy    
     
     st.header("7. Подпись")
     role = st.text_input("Роль", "QA-инженер")
