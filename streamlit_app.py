@@ -83,10 +83,17 @@ def generate_docx(data, module_data_list, defects_df):
     title_font = title.runs[0].font
     title_font.size = Pt(16)
     title_font.bold = True
+    title_font.color.rgb = RGBColor(0, 0, 0)
 
-    # Информационные поля (в виде таблицы)
+    # Информационные поля (в виде таблицы с цветным фоном заголовков)
     info_table = doc.add_table(rows=6, cols=2)
     info_table.style = 'Table Grid'
+    
+    # Устанавливаем ширину колонок
+    for i in range(2):
+        for row in info_table.rows:
+            row.cells[i].width = Inches(3.25 if i == 0 else 3.25)
+    
     fields = [
         ('Проект:', data["project"]),
         ('Тип приложения:', data["app_type"]),
@@ -95,19 +102,29 @@ def generate_docx(data, module_data_list, defects_df):
         ('Дата формирования отчёта:', data["report_date"]),
         ('Тест-инженер:', data["engineer"])
     ]
+    
     for i, (label, value) in enumerate(fields):
-        info_table.cell(i, 0).text = label
-        info_table.cell(i, 1).text = value
-        for run in info_table.cell(i, 0).paragraphs[0].runs:
+        cell1 = info_table.cell(i, 0)
+        cell1.text = label
+        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell1.paragraphs[0].runs:
             run.font.bold = True
+            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет
+        
+        cell2 = info_table.cell(i, 1)
+        cell2.text = value
+        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell2.paragraphs[0].runs:
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Черный
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # Краткое резюме
+    # Краткое резюме с цветной рамкой
     doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
     
     summary_table = doc.add_table(rows=8, cols=2)
     summary_table.style = 'Table Grid'
+    
     summary_fields = [
         ('Статус релиза:', data['release_status']),
         ('Критические дефекты (S1):', str(data['s1'])),
@@ -118,11 +135,22 @@ def generate_docx(data, module_data_list, defects_df):
         ('Основной риск:', data['risk']),
         ('Рекомендация:', data['recommendation'])
     ]
+    
     for i, (label, value) in enumerate(summary_fields):
-        summary_table.cell(i, 0).text = label
-        summary_table.cell(i, 1).text = value
-        for run in summary_table.cell(i, 0).paragraphs[0].runs:
+        cell1 = summary_table.cell(i, 0)
+        cell1.text = label
+        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell1.paragraphs[0].runs:
             run.font.bold = True
+            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий
+        
+        cell2 = summary_table.cell(i, 1)
+        cell2.text = value
+        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell2.paragraphs[0].runs:
+            run.font.color.rgb = RGBColor(0, 0, 0)
+
+    doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
     # Диаграммы
     plt.figure(figsize=(5, 4))
@@ -148,6 +176,7 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
     context_table = doc.add_table(rows=6, cols=2)
     context_table.style = 'Table Grid'
+    
     context_fields = [
         ('Устройство / Браузер:', data['device_browser']),
         ('ОС / Платформа:', data['os_platform']),
@@ -156,11 +185,20 @@ def generate_docx(data, module_data_list, defects_df):
         ('Инструменты:', data['tools']),
         ('Методология:', data['methodology'])
     ]
+    
     for i, (label, value) in enumerate(context_fields):
-        context_table.cell(i, 0).text = label
-        context_table.cell(i, 1).text = value
-        for run in context_table.cell(i, 0).paragraphs[0].runs:
+        cell1 = context_table.cell(i, 0)
+        cell1.text = label
+        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell1.paragraphs[0].runs:
             run.font.bold = True
+            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий
+        
+        cell2 = context_table.cell(i, 1)
+        cell2.text = value
+        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell2.paragraphs[0].runs:
+            run.font.color.rgb = RGBColor(0, 0, 0)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
@@ -184,6 +222,7 @@ def generate_docx(data, module_data_list, defects_df):
         if line.strip():
             p = doc.add_paragraph()
             p.add_run(f"• {line.strip()}").italic = True
+            p.paragraphs[0].runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый
             p.paragraph_format.space_after = Pt(2)
 
     # Вывод и рекомендации
@@ -195,6 +234,7 @@ def generate_docx(data, module_data_list, defects_df):
         if line.strip():
             p = doc.add_paragraph()
             p.add_run(f"• {line.strip()}").italic = True
+            p.paragraphs[0].runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый
             p.paragraph_format.space_after = Pt(2)
 
     # Подпись
@@ -206,11 +246,20 @@ def generate_docx(data, module_data_list, defects_df):
         ('ФИО:', data['fullname']),
         ('Дата:', data['signature_date'])
     ]
+    
     for i, (label, value) in enumerate(signature_fields):
-        signature_table.cell(i, 0).text = label
-        signature_table.cell(i, 1).text = value
-        for run in signature_table.cell(i, 0).paragraphs[0].runs:
+        cell1 = signature_table.cell(i, 0)
+        cell1.text = label
+        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell1.paragraphs[0].runs:
             run.font.bold = True
+            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий
+        
+        cell2 = signature_table.cell(i, 1)
+        cell2.text = value
+        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell2.paragraphs[0].runs:
+            run.font.color.rgb = RGBColor(0, 0, 0)
 
     buffer = io.BytesIO()
     doc.save(buffer)
