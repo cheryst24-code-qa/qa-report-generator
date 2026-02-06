@@ -693,6 +693,12 @@ if submitted:
     
     if s1 < 0 or s2 < 0:
         validation_errors.append("❌ Количество дефектов не может быть отрицательным")
+
+    # Текущая валидация минимальна — можно добавить:
+if not report_title.strip():
+    validation_errors.append("❌ Название отчёта не может быть пустым")
+if pass_tc > total_tc or fail_tc > total_tc:
+    validation_errors.append("❌ Количество успешных/проваленных тестов не может превышать общее")
     
     if validation_errors:
         for error in validation_errors:
