@@ -286,7 +286,7 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     plt.figure(figsize=(6, 4.5))
     plt.pie([pass_count, fail_count], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
             colors=['#4CAF50', '#F44336'], startangle=90, textprops={'fontsize': 11})
-    plt.title('Рис. 1. Распределение результатов тест-кейсов', fontsize=12, pad=15)
+    plt.title('Рис. 1. Распределение результатов тест-кейсов', fontsize=10, pad=15)
     buf1 = io.BytesIO()
     plt.savefig(buf1, format='png', dpi=150, bbox_inches='tight', facecolor='white')
     plt.close()
@@ -295,7 +295,7 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     plt.figure(figsize=(6, 4.5))
     bars = plt.bar(['Critical (S1)', 'Major (S2)'], [s1_count, s2_count],
                    color=['#F44336', '#FF9800'], width=0.5)
-    plt.title('Рис. 2. Дефекты по уровню серьёзности', fontsize=12, pad=15)
+    plt.title('Рис. 2. Дефекты по уровню серьёзности', fontsize=10, pad=15)
     plt.ylabel('Количество', fontsize=11)
     plt.ylim(0, max(s1_count, s2_count, 1) * 1.3)
     for bar in bars:
