@@ -9,6 +9,15 @@ import matplotlib.pyplot as plt
 import io
 import tempfile
 import os
+import traceback
+
+# === ИМПОРТЫ ДЛЯ КОНВЕРТАЦИИ DOCX В PDF ===
+try:
+    from docx2pdf import convert  # Для конвертации в Windows
+    PDF_CONVERSION_AVAILABLE = True
+except ImportError:
+    PDF_CONVERSION_AVAILABLE = False
+    st.warning("⚠️ Модуль docx2pdf не найден. Экспорт в PDF недоступен. Установите: pip install docx2pdf")
 
 def set_col_width(col, width_twips):
     """Устанавливает ширину колонки в таблице DOCX"""
@@ -18,6 +27,8 @@ def set_col_width(col, width_twips):
         tcW.set(qn('w:w'), str(int(width_twips)))
         tcW.set(qn('w:type'), 'dxa')
         tc.append(tcW)
+
+# === УДАЛЕНО: дублирующаяся функция set_col_width (была на строке 83-90) ===
 
 def plot_to_buffer():
     """Сохраняет диаграмму в буфер и возвращает его"""
@@ -29,7 +40,14 @@ def plot_to_buffer():
 
 def add_table_from_df(doc, df):
     """Создаёт таблицу с фиксированной шириной и границами"""
+    # === ИСПРАВЛЕНИЕ: Добавлена проверка на пустой список колонок ===
+    if len(df.columns) == 0:
+        doc.add_paragraph("Нет данных для отображения")
+        doc.add_paragraph().paragraph_format.space_after = Pt(6)
+        return
+    
     if df.empty:
+        # Создаём таблицу с заголовками и одной пустой строкой
         table = doc.add_table(rows=2, cols=len(df.columns))
         for i, col in enumerate(df.columns):
             table.cell(0, i).text = str(col)
@@ -71,17 +89,47 @@ def add_table_from_df(doc, df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
-def set_col_width(col, width_twips):
-    """Устанавливает ширину колонки в таблице DOCX"""
-    for cell in col.cells:
-        tc = cell._element.tcPr
-        tcW = OxmlElement('w:tcW')
-        tcW.set(qn('w:w'), str(int(width_twips)))
-        tcW.set(qn('w:type'), 'dxa')
-        tc.append(tcW)
+def convert_docx_to_pdf(docx_buffer):
+    """
+    Конвертирует DOCX в PDF.
+    Возвращает буфер с PDF или выбрасывает исключение.
+    """
+    if not PDF_CONVERSION_AVAILABLE:
+        raise Exception("Модуль docx2pdf не установлен. Установите: pip install docx2pdf")
+    
+    try:
+        # Сохраняем DOCX во временный файл
+        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp_docx:
+            tmp_docx.write(docx_buffer.getvalue())
+            tmp_docx_path = tmp_docx.name
+        
+        # Создаём временный файл для PDF
+        pdf_path = tmp_docx_path.replace('.docx', '.pdf')
+        
+        # Конвертируем
+        convert(tmp_docx_path, pdf_path)
+        
+        # Читаем PDF в буфер
+        with open(pdf_path, 'rb') as pdf_file:
+            pdf_buffer = io.BytesIO(pdf_file.read())
+        
+        # Удаляем временные файлы
+        os.unlink(tmp_docx_path)
+        os.unlink(pdf_path)
+        
+        pdf_buffer.seek(0)
+        return pdf_buffer
+        
+    except Exception as e:
+        # Удаляем временные файлы при ошибке
+        if 'tmp_docx_path' in locals() and os.path.exists(tmp_docx_path):
+            os.unlink(tmp_docx_path)
+        if 'pdf_path' in locals() and os.path.exists(pdf_path):
+            os.unlink(pdf_path)
+        raise Exception(f"Ошибка конвертации в PDF: {str(e)}")
 
 def generate_docx(data, module_data_list, defects_df):
-    """Генерирует строго деловой DOCX-отчет"""
+    """Генерирует строго деловой DOCX-отчёт"""
     doc = Document()
     style = doc.styles['Normal']
     font = style.font
@@ -366,7 +414,7 @@ with st.form("main_form"):
         os_platform = st.text_input("ОС / Платформа", "Android 15")
         build = st.text_input("Сборка", "lemanna-pro_241006.001.apk")
     with col4:
-        env_url = st.text_input("URL стенда", "https://test.lemanna.pro        ")
+        env_url = st.text_input("URL стенда", "https://test.lemanna.pro")
         tools = st.text_input("Инструменты", "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)")
         methodology = st.text_input("Методология", "Ручное функциональное тестирование + проверка безопасности")
 
@@ -399,9 +447,41 @@ with st.form("main_form"):
     fullname = st.text_input("ФИО", "Черкасов Игорь")
     signature_date = st.text_input("Дата", "30.11.2025")
 
+    # === НОВАЯ ОПЦИЯ: Выбор формата экспорта ===
+    export_format = st.selectbox(
+        "Формат экспорта",
+        ["Только DOCX", "Только PDF", "DOCX + PDF"],
+        index=0,
+        help="PDF доступен только при установленном модуле docx2pdf"
+    )
+    
     submitted = st.form_submit_button("📥 Создать отчёт")
 
 if submitted:
+    # === БАЗОВАЯ ВАЛИДАЦИЯ ДАННЫХ ===
+    validation_errors = []
+    
+    # Проверка: сумма статусов должна равняться общему количеству
+    if pass_tc + fail_tc != total_tc:
+        validation_errors.append(
+            f"⚠️ Сумма статусов ({pass_tc} PASS + {fail_tc} FAIL = {pass_tc + fail_tc}) "
+            f"не равна общему количеству тест-кейсов ({total_tc})"
+        )
+    
+    # Проверка: общее количество должно быть > 0
+    if total_tc <= 0:
+        validation_errors.append("❌ Общее количество тест-кейсов должно быть больше 0")
+    
+    # Проверка: отрицательные значения в дефектах
+    if s1 < 0 or s2 < 0:
+        validation_errors.append("❌ Количество дефектов не может быть отрицательным")
+    
+    # Отображение ошибок валидации
+    if validation_errors:
+        for error in validation_errors:
+            st.error(error)
+        st.stop()  # Прекращаем выполнение при ошибках
+    
     # === ПОДГОТОВКА ДАННЫХ ===
     data = {
         "report_title": report_title,
@@ -420,7 +500,7 @@ if submitted:
         "device_browser": device_browser,
         "os_platform": os_platform,
         "build": build,
-        "env_url": env_url,
+        "env_url": env_url.strip(),  # === ИСПРАВЛЕНИЕ: Очистка от лишних пробелов ===
         "tools": tools,
         "methodology": methodology,
         "risk": risk,
@@ -437,15 +517,51 @@ if submitted:
     try:
         # === ГЕНЕРАЦИЯ DOCX ===
         docx_buffer = generate_docx(data, module_data_list, defects)
+        
+        # === КОНВЕРТАЦИЯ В PDF (если выбрано) ===
+        pdf_buffer = None
+        if export_format in ["Только PDF", "DOCX + PDF"]:
+            if not PDF_CONVERSION_AVAILABLE:
+                st.error("❌ Экспорт в PDF недоступен. Установите модуль: `pip install docx2pdf`")
+            else:
+                with st.spinner("Конвертация в PDF..."):
+                    try:
+                        pdf_buffer = convert_docx_to_pdf(docx_buffer)
+                    except Exception as e:
+                        st.error(f"❌ Ошибка конвертации в PDF: {str(e)}")
+                        # Продолжаем работу, только без PDF
+        
         st.success("✅ Отчёт готов!")
         
-        # === КНОПКА СКАЧИВАНИЯ ===
-        st.download_button(
-            "📄 Скачать .docx",
-            docx_buffer,
-            "Отчёт_о_тестировании.docx",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        # === КНОПКИ СКАЧИВАНИЯ ===
+        col_download1, col_download2 = st.columns(2)
+        
+        with col_download1:
+            if export_format in ["Только DOCX", "DOCX + PDF"]:
+                st.download_button(
+                    "📄 Скачать .docx",
+                    docx_buffer,
+                    "Отчёт_о_тестировании.docx",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
+        
+        with col_download2:
+            if pdf_buffer is not None and export_format in ["Только PDF", "DOCX + PDF"]:
+                st.download_button(
+                    "📄 Скачать .pdf",
+                    pdf_buffer,
+                    "Отчёт_о_тестировании.pdf",
+                    "application/pdf",
+                    use_container_width=True
+                )
+        
+        # Информация о доступности форматов
+        if export_format in ["Только PDF", "DOCX + PDF"] and not PDF_CONVERSION_AVAILABLE:
+            st.info("ℹ️ Для экспорта в PDF установите: `pip install docx2pdf`")
             
     except Exception as e:
-        st.error(f"❌ Ошибка: {e}")
+        st.error(f"❌ Ошибка генерации отчёта: {str(e)}")
+        # Показываем traceback для отладки (в продакшене можно заменить на логирование)
+        with st.expander("Показать детали ошибки"):
+            st.code(traceback.format_exc())
