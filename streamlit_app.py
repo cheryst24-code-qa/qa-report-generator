@@ -621,14 +621,30 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.cell(row=row, column=col).border = thin_border
     row += 2
     
-    # === СВОДКА (с границами у всех ячеек) ===
-    ws.merge_cells(f'A{row}:E{row}')
-    cell = ws.cell(row=row, column=1, value="📊 КЛЮЧЕВЫЕ МЕТРИКИ")
-    cell.font = Font(bold=True, size=12, color="FFFFFF")
-    cell.fill = section_fill
-    cell.alignment = wrap_center
-    for col in range(1, 6):
-        ws.cell(row=row, column=col).border = thin_border
+# === СВОДКА (все ячейки с границами) ===
+ws.merge_cells(f'A{row}:E{row}')
+cell = ws.cell(row=row, column=1, value="📊 КЛЮЧЕВЫЕ МЕТРИКИ")
+cell.font = Font(bold=True, size=12, color="FFFFFF")
+cell.fill = section_fill
+cell.alignment = wrap_center
+# ← ОБЯЗАТЕЛЬНО: границы у ВСЕХ ячеек заголовка
+for col in range(1, 6):
+    ws.cell(row=row, column=col).border = thin_border
+row += 1
+
+# Данные: каждая ячейка с границей
+for label, value in summary_rows:
+    # Метрика (A)
+    cell_label = ws.cell(row=row, column=1, value=label)
+    cell_label.font = Font(bold=True)
+    cell_label.border = thin_border          # ← ГРАНИЦА!
+    cell_label.alignment = wrap_right
+    
+    # Значение (B-E объединены)
+    ws.merge_cells(f'B{row}:E{row}')
+    cell_value = ws.cell(row=row, column=2, value=value)
+    cell_value.border = thin_border          # ← ГРАНИЦА!
+    cell_value.alignment = wrap_left
     row += 1
     
     summary_rows = [
@@ -671,8 +687,24 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = context_fill
     cell.alignment = wrap_center
-    for col in range(1, 6):
-        ws.cell(row=row, column=col).border = thin_border
+    # ← ОБЯЗАТЕЛЬНО: границы у ВСЕХ ячеек заголовка
+for col in range(1, 6):
+    ws.cell(row=row, column=col).border = thin_border
+row += 1
+
+# Данные: каждая ячейка с границей
+for label, value in summary_rows:
+    # Метрика (A)
+    cell_label = ws.cell(row=row, column=1, value=label)
+    cell_label.font = Font(bold=True)
+    cell_label.border = thin_border          # ← ГРАНИЦА!
+    cell_label.alignment = wrap_right
+    
+    # Значение (B-E объединены)
+    ws.merge_cells(f'B{row}:E{row}')
+    cell_value = ws.cell(row=row, column=2, value=value)
+    cell_value.border = thin_border          # ← ГРАНИЦА!
+    cell_value.alignment = wrap_left
     row += 1
     
     context_rows = [
@@ -820,8 +852,24 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = signature_fill
     cell.alignment = wrap_center
-    for col in range(1, 6):
-        ws.cell(row=row, column=col).border = thin_border
+    # ← ОБЯЗАТЕЛЬНО: границы у ВСЕХ ячеек заголовка
+for col in range(1, 6):
+    ws.cell(row=row, column=col).border = thin_border
+row += 1
+
+# Данные: каждая ячейка с границей
+for label, value in summary_rows:
+    # Метрика (A)
+    cell_label = ws.cell(row=row, column=1, value=label)
+    cell_label.font = Font(bold=True)
+    cell_label.border = thin_border          # ← ГРАНИЦА!
+    cell_label.alignment = wrap_right
+    
+    # Значение (B-E объединены)
+    ws.merge_cells(f'B{row}:E{row}')
+    cell_value = ws.cell(row=row, column=2, value=value)
+    cell_value.border = thin_border          # ← ГРАНИЦА!
+    cell_value.alignment = wrap_left
     row += 1
     
     signature_rows = [
