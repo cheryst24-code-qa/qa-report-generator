@@ -248,7 +248,8 @@ def generate_pdf(data, module_data_list, defects_df):
 
     # Модули
     story.append(Paragraph('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', styles['Heading2']))
-    for idx, module_info in enumerate(module_data_list):
+    for idx in range(len(module_data_list)):
+        module_info = module_data_list[idx]
         story.append(Paragraph(f'3.{idx+1}. {module_info["title"]}', styles['Heading3']))
         
         df_cleaned = module_info['df'].fillna('')
