@@ -690,16 +690,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         row += 1
     row += 1
     
-    # === РЕЗУЛЬТАТЫ ТЕСТОВ (оставляем 5 колонок) ===
-    # ... (ваш текущий код для таблицы тестов без изменений) ...
-    
-    # === УСТАНОВКА ШИРИН ===
-    for col_letter, width in COL_WIDTHS.items():
-        ws.column_dimensions[col_letter].width = width
-    
-    wb.save(output)
-    output.seek(0)
-    return output
     
     # === РЕЗУЛЬТАТЫ ТЕСТОВ (5 колонок) ===
     ws.merge_cells(f'A{row}:E{row}')
