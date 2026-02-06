@@ -344,7 +344,7 @@ def generate_html_report(data, module_data_list, defects_df):
     <title>{escape_html(data['report_title'])}</title>
     <style>
         body {{
-            font-family: 'Times New Roman', Times, serif;
+            font-family: 'Calibri Light', Times, serif;
             font-size: 12pt;
             line-height: 1.5;
             max-width: 800px;
@@ -736,7 +736,7 @@ if submitted:
         docx_buffer = generate_docx(data, module_data_list, defects)
         html_buffer = generate_html_report(data, module_data_list, defects)
         
-        st.success("✅ Отчёт готов! Диаграммы и форматирование таблиц корректны.")
+        st.success("✅ Отчёт готов!")
         
         # КНОПКИ СКАЧИВАНИЯ
         col1, col2 = st.columns(2)
@@ -766,7 +766,7 @@ if submitted:
             <h4>🖨️ Как получить профессиональный PDF:</h4>
             <ol>
                 <li>Скачайте файл <strong>HTML</strong></li>
-                <li>Откройте в <strong>браузере</strong> (Chrome/Edge)</li>
+                <li>Откройте в <strong>браузере</strong></li>
                 <li>Нажмите <kbd>Ctrl+P</kbd> → «Сохранить как PDF»</li>
                 <li>Установите: ориентация «Книжная», масштаб «100%»</li>
                 <li>Сохраните — получите отчёт с диаграммами как в образце</li>
