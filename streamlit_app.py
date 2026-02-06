@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
-from docx.shared import Inches, Pt
+from docx.shared import Inches, Pt, RGBColor  # <<< Добавлен RGBColor
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml.shared import OxmlElement, qn
 import matplotlib.pyplot as plt
@@ -20,6 +20,7 @@ def set_col_width(col, width_twips):
         tc.append(tcW)
 
 def plot_to_buffer():
+    """Сохраняет диаграмму в буфер и возвращает его"""
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
     buf.seek(0)
@@ -71,22 +72,23 @@ def add_table_from_df(doc, df):
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
 def generate_docx(data, module_data_list, defects_df):
+    """Генерирует DOCX-отчет с улучшенным форматированием"""
     doc = Document()
     style = doc.styles['Normal']
     font = style.font
     font.name = 'Times New Roman'
     font.size = Pt(12)
     
-    # Заголовок
+    # === ЗАГОЛОВОК ОТЧЕТА ===
     title = doc.add_heading(data["report_title"], 0)
     title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
     title_font = title.runs[0].font
-    title_font.size = Pt(16)
+    title_font.size = Pt(16)  # Увеличенный размер шрифта
     title_font.bold = True
-    title_font.color.rgb = RGBColor(0, 0, 0)
+    title_font.color.rgb = RGBColor(0, 0, 0)  # Черный цвет заголовка
 
-    # Информационные поля (в виде таблицы с цветным фоном заголовков)
-    info_table = doc.add_table(rows=6, cols=2)
+    # === ИНФОРМАЦИОННЫЕ ПОЛЯ (в виде таблицы) ===
+    info_table = doc.add_table(rows=6, cols=2)  # 6 строк: проект, тип, версия, период, дата, инженер
     info_table.style = 'Table Grid'
     
     # Устанавливаем ширину колонок
@@ -94,6 +96,7 @@ def generate_docx(data, module_data_list, defects_df):
         for row in info_table.rows:
             row.cells[i].width = Inches(3.25 if i == 0 else 3.25)
     
+    # Данные для заполнения
     fields = [
         ('Проект:', data["project"]),
         ('Тип приложения:', data["app_type"]),
@@ -103,35 +106,41 @@ def generate_docx(data, module_data_list, defects_df):
         ('Тест-инженер:', data["engineer"])
     ]
     
+    # Заполняем таблицу информацией
     for i, (label, value) in enumerate(fields):
-        cell1 = info_table.cell(i, 0)
+        cell1 = info_table.cell(i, 0)  # Левая колонка (название поля)
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True
-            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет
+            run.font.bold = True  # Жирный шрифт для меток
+            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет меток
         
-        cell2 = info_table.cell(i, 1)
+        cell2 = info_table.cell(i, 1)  # Правая колонка (значение поля)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)  # Черный
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Черный цвет значений
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # Краткое резюме с цветной рамкой
+    # === КРАТКОЕ РЕЗЮМЕ (в виде таблицы) ===
     doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
     
-    summary_table = doc.add_table(rows=8, cols=2)
+    summary_table = doc.add_table(rows=8, cols=2)  # 8 строк: статус, дефекты, кейсы, результаты, риск, рекомендация
     summary_table.style = 'Table Grid'
+    
+    # Подсчет процентов
+    total = data['total_tc']
+    pass_pct = data['pass'] / total * 100 if total > 0 else 0
+    fail_pct = 100 - pass_pct
     
     summary_fields = [
         ('Статус релиза:', data['release_status']),
         ('Критические дефекты (S1):', str(data['s1'])),
         ('Мажорные дефекты (S2):', str(data['s2'])),
         ('Всего тест-кейсов:', str(data['total_tc'])),
-        ('Успешно (Pass):', f"{data['pass']} ({data['pass']/data['total_tc']*100:.1f}%)"),
-        ('Упали (Fail):', f"{data['fail']} ({(1-data['pass']/data['total_tc'])*100:.1f}%)"),
+        ('Успешно (Pass):', f"{data['pass']} ({pass_pct:.1f}%)"),
+        ('Упали (Fail):', f"{data['fail']} ({fail_pct:.1f}%)"),
         ('Основной риск:', data['risk']),
         ('Рекомендация:', data['recommendation'])
     ]
@@ -141,18 +150,19 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True
-            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий
+            run.font.bold = True  # Жирный шрифт для меток
+            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет меток
         
         cell2 = summary_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Черный цвет значений
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # Диаграммы
+    # === ДИАГРАММЫ ===
+    # Диаграмма PASS/FAIL
     plt.figure(figsize=(5, 4))
     plt.pie([data['pass'], data['fail']], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
             colors=['#4CAF50', '#F44336'], startangle=90)
@@ -160,9 +170,10 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_picture(plot_to_buffer(), width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
+    # Диаграмма дефектов по серьезности
     plt.figure(figsize=(5, 4))
     bars = plt.bar(['Critical (S1)', 'Major (S2)'], [data['s1'], data['s2']],
-                   color=['#F44336', '#FF9800'])
+                   color=['#F44336', '#FF9800'])  # Красный и оранжевый
     plt.title('Рис. 2. Дефекты по уровню серьёзности')
     plt.ylabel('Количество')
     for bar in bars:
@@ -172,9 +183,9 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_picture(plot_to_buffer(), width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # Контекст тестирования
+    # === КОНТЕКСТ ТЕСТИРОВАНИЯ (в виде таблицы) ===
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
-    context_table = doc.add_table(rows=6, cols=2)
+    context_table = doc.add_table(rows=6, cols=2)  # 6 строк: устройство, ОС, сборка, стенд, инструменты, методология
     context_table.style = 'Table Grid'
     
     context_fields = [
@@ -191,55 +202,55 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True
-            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий
+            run.font.bold = True  # Жирный шрифт для меток
+            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет меток
         
         cell2 = context_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Черный цвет значений
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # Модули
+    # === РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ ===
     doc.add_heading('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', 1)
     for idx, module_info in enumerate(module_data_list):
         title = module_info['title']
         df = module_info['df']
-        doc.add_heading(f'3.{idx+1}. {title}', 2)
-        add_table_from_df(doc, df)
+        doc.add_heading(f'3.{idx+1}. {title}', 2)  # Нумерация модулей
+        add_table_from_df(doc, df)  # Добавляем таблицу с результатами тестов
 
-    # Анализ дефектов
+    # === АНАЛИЗ ДЕФЕКТОВ ===
     doc.add_heading('4. АНАЛИЗ ДЕФЕКТОВ', 1)
-    add_table_from_df(doc, defects_df)
+    add_table_from_df(doc, defects_df)  # Таблица с дефектами
     doc.add_paragraph('Последствия:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['consequences']).paragraph_format.space_after = Pt(6)
 
-    # Ограничения
+    # === ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ ===
     doc.add_heading('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', 1)
-    for line in data['limitations'].split('\n'):
-        if line.strip():
+    for line in data['limitations'].split('\n'):  # Разбиваем по строкам
+        if line.strip():  # Проверяем, что строка не пустая
             p = doc.add_paragraph()
-            p.add_run(f"• {line.strip()}").italic = True
-            p.paragraphs[0].runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый
+            p.add_run(f"• {line.strip()}").italic = True  # Курсив для ограничений
+            p.paragraphs[0].runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый цвет
             p.paragraph_format.space_after = Pt(2)
 
-    # Вывод и рекомендации
+    # === ВЫВОД И РЕКОМЕНДАЦИИ ===
     doc.add_heading('6. ВЫВОД И РЕКОМЕНДАЦИИ', 1)
     doc.add_paragraph('Вывод:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['conclusion']).paragraph_format.space_after = Pt(6)
     doc.add_paragraph('Рекомендации:').paragraph_format.space_after = Pt(6)
-    for line in data['recommendations_detailed'].split('\n'):
-        if line.strip():
+    for line in data['recommendations_detailed'].split('\n'):  # Разбиваем по строкам
+        if line.strip():  # Проверяем, что строка не пустая
             p = doc.add_paragraph()
-            p.add_run(f"• {line.strip()}").italic = True
-            p.paragraphs[0].runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый
+            p.add_run(f"• {line.strip()}").italic = True  # Курсив для рекомендаций
+            p.paragraphs[0].runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый цвет
             p.paragraph_format.space_after = Pt(2)
 
-    # Подпись
+    # === ПОДПИСЬ (в виде таблицы) ===
     doc.add_heading('7. ПОДПИСЬ', 1)
-    signature_table = doc.add_table(rows=3, cols=2)
+    signature_table = doc.add_table(rows=3, cols=2)  # 3 строки: роль, ФИО, дата
     signature_table.style = 'Table Grid'
     signature_fields = [
         ('Роль:', data['role']),
@@ -252,21 +263,22 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True
-            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий
+            run.font.bold = True  # Жирный шрифт для меток
+            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет меток
         
         cell2 = signature_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)
+            run.font.color.rgb = RGBColor(0, 0, 0)  # Черный цвет значений
 
+    # === СОХРАНЕНИЕ ДОКУМЕНТА ===
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
 
-# === Данные по умолчанию ===
+# === ДАННЫЕ ПО УМОЛЧАНИЮ ===
 default_modules = [
     {"title": "Главный экран и навигация", "df": pd.DataFrame([
         ["MAIN-01", "Отображение карточек товаров", "PASS", "—"],
@@ -299,10 +311,11 @@ default_defects = pd.DataFrame([
     ["BUG-SEC-002", "Безопасность", "Уязвимость к XSS-атакам в поле поиска", "Critical (S1)", "New"]
 ], columns=["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"])
 
-# === Streamlit UI ===
+# === ИНТЕРФЕЙС STREAMLIT ===
 st.set_page_config(page_title="Универсальный генератор QA-отчёта", layout="wide")
 st.title("📄 Универсальный генератор отчёта о тестировании")
 
+# === ФОРМА ВВОДА ===
 with st.form("main_form"):
     report_title = st.text_input(
         "Название отчёта",
@@ -336,7 +349,7 @@ with st.form("main_form"):
         os_platform = st.text_input("ОС / Платформа", "Android 15")
         build = st.text_input("Сборка", "lemanna-pro_241006.001.apk")
     with col4:
-        env_url = st.text_input("URL стенда", "https://test.lemanna.pro      ")
+        env_url = st.text_input("URL стенда", "https://test.lemanna.pro        ")
         tools = st.text_input("Инструменты", "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)")
         methodology = st.text_input("Методология", "Ручное функциональное тестирование + проверка безопасности")
 
@@ -372,6 +385,7 @@ with st.form("main_form"):
     submitted = st.form_submit_button("📥 Создать отчёт")
 
 if submitted:
+    # === ПОДГОТОВКА ДАННЫХ ===
     data = {
         "report_title": report_title,
         "project": project,
@@ -404,10 +418,11 @@ if submitted:
     }
     
     try:
+        # === ГЕНЕРАЦИЯ DOCX ===
         docx_buffer = generate_docx(data, module_data_list, defects)
         st.success("✅ Отчёт готов!")
         
-        # Только DOCX
+        # === КНОПКА СКАЧИВАНИЯ ===
         st.download_button(
             "📄 Скачать .docx",
             docx_buffer,
