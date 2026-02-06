@@ -101,8 +101,8 @@ def generate_docx(data, module_data_list, defects_df):
     total_width = Inches(6.5)
     
     # Устанавливаем ширину колонок: первая колонка — 15%, вторая — 85%
-    first_col_width = total_width * 0.15
-    second_col_width = total_width * 0.85
+    first_col_width = total_width * 0.25
+    second_col_width = total_width * 0.75
     
     for row in info_table.rows:
         row.cells[0].width = first_col_width
