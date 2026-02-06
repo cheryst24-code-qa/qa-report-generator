@@ -548,10 +548,8 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws = wb.active
     ws.title = "Отчёт о тестировании"
     
-    # Ширины колонок
     COL_WIDTHS = {'A': 22, 'B': 14, 'C': 32, 'D': 12, 'E': 35}
     
-    # Стили
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     section_fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")
     context_fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
@@ -600,16 +598,16 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ]
     
     for label, value in summary_rows:
-        # Метрика (A) — ОБЯЗАТЕЛЬНО с границей
+        # Ячейка метрики (A)
         cell_label = ws.cell(row=row, column=1, value=label)
         cell_label.font = Font(bold=True)
-        cell_label.border = thin_border          # ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+        cell_label.border = thin_border          # ← ГРАНИЦА ОБЯЗАТЕЛЬНО
         cell_label.alignment = wrap_right
         
-        # Значение (B-E объединены) — ОБЯЗАТЕЛЬНО с границей
+        # Объединяем B-E и применяем границу к ЛЕВОЙ ВЕРХНЕЙ ячейке
         ws.merge_cells(f'B{row}:E{row}')
         cell_value = ws.cell(row=row, column=2, value=value)
-        cell_value.border = thin_border          # ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+        cell_value.border = thin_border          # ← ГРАНИЦА ОБЯЗАТЕЛЬНО
         cell_value.alignment = wrap_left
         
         # Подсветка статуса
@@ -647,17 +645,17 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for label, value in context_rows:
         cell_param = ws.cell(row=row, column=1, value=label)
         cell_param.font = Font(bold=True)
-        cell_param.border = thin_border          # ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+        cell_param.border = thin_border          # ← ГРАНИЦА ОБЯЗАТЕЛЬНО
         cell_param.alignment = wrap_right
         
         ws.merge_cells(f'B{row}:E{row}')
         cell_value = ws.cell(row=row, column=2, value=value)
-        cell_value.border = thin_border          # ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+        cell_value.border = thin_border          # ← ГРАНИЦА ОБЯЗАТЕЛЬНО
         cell_value.alignment = wrap_left
         row += 1
     row += 1
     
-    # === РЕЗУЛЬТАТЫ ТЕСТОВ (оставляем без изменений — там всё правильно) ===
+    # === РЕЗУЛЬТАТЫ ТЕСТОВ (без изменений) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="✅ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -705,7 +703,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 row += 1
     row += 1
     
-    # === ДЕФЕКТЫ (оставляем без изменений) ===
+    # === ДЕФЕКТЫ (без изменений) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="🐞 АНАЛИЗ ДЕФЕКТОВ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -792,12 +790,12 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for label, value in signature_rows:
         cell_param = ws.cell(row=row, column=1, value=label)
         cell_param.font = Font(bold=True)
-        cell_param.border = thin_border          # ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+        cell_param.border = thin_border          # ← ГРАНИЦА ОБЯЗАТЕЛЬНО
         cell_param.alignment = wrap_right
         
         ws.merge_cells(f'B{row}:E{row}')
         cell_value = ws.cell(row=row, column=2, value=value)
-        cell_value.border = thin_border          # ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+        cell_value.border = thin_border          # ← ГРАНИЦА ОБЯЗАТЕЛЬНО
         cell_value.alignment = wrap_left
         row += 1
     
