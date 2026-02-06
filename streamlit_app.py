@@ -77,9 +77,16 @@ def generate_docx(data, module_data_list, defects_df):
     font.name = 'Times New Roman'
     font.size = Pt(12)
     
+    # Заголовок
     title = doc.add_heading(data["report_title"], 0)
     title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+    title_font = title.runs[0].font
+    title_font.size = Pt(16)
+    title_font.bold = True
 
+    # Информационные поля (в виде таблицы)
+    info_table = doc.add_table(rows=6, cols=2)
+    info_table.style = 'Table Grid'
     fields = [
         ('Проект:', data["project"]),
         ('Тип приложения:', data["app_type"]),
@@ -88,29 +95,36 @@ def generate_docx(data, module_data_list, defects_df):
         ('Дата формирования отчёта:', data["report_date"]),
         ('Тест-инженер:', data["engineer"])
     ]
-    for label, value in fields:
-        p = doc.add_paragraph()
-        p.add_run(label).bold = True
-        p.add_run(f" {value}")
-        p.paragraph_format.space_after = Pt(6)
+    for i, (label, value) in enumerate(fields):
+        info_table.cell(i, 0).text = label
+        info_table.cell(i, 1).text = value
+        for run in info_table.cell(i, 0).paragraphs[0].runs:
+            run.font.bold = True
 
+    doc.add_paragraph().paragraph_format.space_after = Pt(12)
+
+    # Краткое резюме
     doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
-    total = data['total_tc']
-    pass_pct = data['pass'] / total * 100 if total > 0 else 0
-    summary_lines = [
-        f"Статус релиза: {data['release_status']}",
-        f"Критические дефекты (S1): {data['s1']}",
-        f"Мажорные дефекты (S2): {data['s2']}",
-        f"Всего тест-кейсов: {total}",
-        f"Успешно (Pass): {data['pass']} ({pass_pct:.1f}%)",
-        f"Упали (Fail): {data['fail']} ({(100 - pass_pct):.1f}%)",
-        f"Основной риск: {data['risk']}",
-        f"Рекомендация: {data['recommendation']}"
+    
+    summary_table = doc.add_table(rows=8, cols=2)
+    summary_table.style = 'Table Grid'
+    summary_fields = [
+        ('Статус релиза:', data['release_status']),
+        ('Критические дефекты (S1):', str(data['s1'])),
+        ('Мажорные дефекты (S2):', str(data['s2'])),
+        ('Всего тест-кейсов:', str(data['total_tc'])),
+        ('Успешно (Pass):', f"{data['pass']} ({data['pass']/data['total_tc']*100:.1f}%)"),
+        ('Упали (Fail):', f"{data['fail']} ({(1-data['pass']/data['total_tc'])*100:.1f}%)"),
+        ('Основной риск:', data['risk']),
+        ('Рекомендация:', data['recommendation'])
     ]
-    for line in summary_lines:
-        p = doc.add_paragraph(line)
-        p.paragraph_format.space_after = Pt(6)
+    for i, (label, value) in enumerate(summary_fields):
+        summary_table.cell(i, 0).text = label
+        summary_table.cell(i, 1).text = value
+        for run in summary_table.cell(i, 0).paragraphs[0].runs:
+            run.font.bold = True
 
+    # Диаграммы
     plt.figure(figsize=(5, 4))
     plt.pie([data['pass'], data['fail']], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
             colors=['#4CAF50', '#F44336'], startangle=90)
@@ -130,51 +144,73 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_picture(plot_to_buffer(), width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
+    # Контекст тестирования
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
-    context_lines = [
-        f"Устройство / Браузер: {data['device_browser']}",
-        f"ОС / Платформа: {data['os_platform']}",
-        f"Сборка / Версия: {data['build']}",
-        f"Стенд: Тестовое окружение (адрес: {data['env_url']})",
-        f"Инструменты: {data['tools']}",
-        f"Методология: {data['methodology']}"
+    context_table = doc.add_table(rows=6, cols=2)
+    context_table.style = 'Table Grid'
+    context_fields = [
+        ('Устройство / Браузер:', data['device_browser']),
+        ('ОС / Платформа:', data['os_platform']),
+        ('Сборка / Версия:', data['build']),
+        ('Стенд:', f"Тестовое окружение (адрес: {data['env_url']})"),
+        ('Инструменты:', data['tools']),
+        ('Методология:', data['methodology'])
     ]
-    for line in context_lines:
-        p = doc.add_paragraph(line)
-        p.paragraph_format.space_after = Pt(6)
+    for i, (label, value) in enumerate(context_fields):
+        context_table.cell(i, 0).text = label
+        context_table.cell(i, 1).text = value
+        for run in context_table.cell(i, 0).paragraphs[0].runs:
+            run.font.bold = True
 
+    doc.add_paragraph().paragraph_format.space_after = Pt(12)
+
+    # Модули
     doc.add_heading('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', 1)
-    
     for idx, module_info in enumerate(module_data_list):
         title = module_info['title']
         df = module_info['df']
         doc.add_heading(f'3.{idx+1}. {title}', 2)
         add_table_from_df(doc, df)
 
+    # Анализ дефектов
     doc.add_heading('4. АНАЛИЗ ДЕФЕКТОВ', 1)
     add_table_from_df(doc, defects_df)
     doc.add_paragraph('Последствия:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['consequences']).paragraph_format.space_after = Pt(6)
 
+    # Ограничения
     doc.add_heading('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', 1)
     for line in data['limitations'].split('\n'):
         if line.strip():
-            doc.add_paragraph(f"• {line.strip()}").paragraph_format.space_after = Pt(2)
-    doc.add_paragraph().paragraph_format.space_after = Pt(6)
+            p = doc.add_paragraph()
+            p.add_run(f"• {line.strip()}").italic = True
+            p.paragraph_format.space_after = Pt(2)
 
+    # Вывод и рекомендации
     doc.add_heading('6. ВЫВОД И РЕКОМЕНДАЦИИ', 1)
     doc.add_paragraph('Вывод:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['conclusion']).paragraph_format.space_after = Pt(6)
     doc.add_paragraph('Рекомендации:').paragraph_format.space_after = Pt(6)
     for line in data['recommendations_detailed'].split('\n'):
         if line.strip():
-            doc.add_paragraph(f"• {line.strip()}").paragraph_format.space_after = Pt(2)
-    doc.add_paragraph().paragraph_format.space_after = Pt(6)
+            p = doc.add_paragraph()
+            p.add_run(f"• {line.strip()}").italic = True
+            p.paragraph_format.space_after = Pt(2)
 
+    # Подпись
     doc.add_heading('7. ПОДПИСЬ', 1)
-    doc.add_paragraph(f"Роль: {data['role']}").paragraph_format.space_after = Pt(6)
-    doc.add_paragraph(f"ФИО: {data['fullname']}").paragraph_format.space_after = Pt(6)
-    doc.add_paragraph(f"Дата: {data['signature_date']}").paragraph_format.space_after = Pt(6)
+    signature_table = doc.add_table(rows=3, cols=2)
+    signature_table.style = 'Table Grid'
+    signature_fields = [
+        ('Роль:', data['role']),
+        ('ФИО:', data['fullname']),
+        ('Дата:', data['signature_date'])
+    ]
+    for i, (label, value) in enumerate(signature_fields):
+        signature_table.cell(i, 0).text = label
+        signature_table.cell(i, 1).text = value
+        for run in signature_table.cell(i, 0).paragraphs[0].runs:
+            run.font.bold = True
 
     buffer = io.BytesIO()
     doc.save(buffer)
