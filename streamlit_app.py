@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor  # <<< Добавлен RGBColor
+from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml.shared import OxmlElement, qn
 import matplotlib.pyplot as plt
@@ -83,12 +83,12 @@ def generate_docx(data, module_data_list, defects_df):
     title = doc.add_heading(data["report_title"], 0)
     title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
     title_font = title.runs[0].font
-    title_font.size = Pt(16)  # Увеличенный размер шрифта
+    title_font.size = Pt(16)
     title_font.bold = True
-    title_font.color.rgb = RGBColor(0, 0, 0)  # Черный цвет заголовка
+    title_font.color.rgb = RGBColor(0, 0, 0)
 
     # === ИНФОРМАЦИОННЫЕ ПОЛЯ (в виде таблицы) ===
-    info_table = doc.add_table(rows=6, cols=2)  # 6 строк: проект, тип, версия, период, дата, инженер
+    info_table = doc.add_table(rows=6, cols=2)
     info_table.style = 'Table Grid'
     
     # Устанавливаем ширину колонок
@@ -110,6 +110,7 @@ def generate_docx(data, module_data_list, defects_df):
     for i, (label, value) in enumerate(fields):
         cell1 = info_table.cell(i, 0)  # Левая колонка (название поля)
         cell1.text = label
+        # Исправлено: устанавливаем выравнивание для первого параграфа
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
             run.font.bold = True  # Жирный шрифт для меток
@@ -126,7 +127,7 @@ def generate_docx(data, module_data_list, defects_df):
     # === КРАТКОЕ РЕЗЮМЕ (в виде таблицы) ===
     doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
     
-    summary_table = doc.add_table(rows=8, cols=2)  # 8 строк: статус, дефекты, кейсы, результаты, риск, рекомендация
+    summary_table = doc.add_table(rows=8, cols=2)
     summary_table.style = 'Table Grid'
     
     # Подсчет процентов
@@ -173,7 +174,7 @@ def generate_docx(data, module_data_list, defects_df):
     # Диаграмма дефектов по серьезности
     plt.figure(figsize=(5, 4))
     bars = plt.bar(['Critical (S1)', 'Major (S2)'], [data['s1'], data['s2']],
-                   color=['#F44336', '#FF9800'])  # Красный и оранжевый
+                   color=['#F44336', '#FF9800'])
     plt.title('Рис. 2. Дефекты по уровню серьёзности')
     plt.ylabel('Количество')
     for bar in bars:
@@ -185,7 +186,7 @@ def generate_docx(data, module_data_list, defects_df):
 
     # === КОНТЕКСТ ТЕСТИРОВАНИЯ (в виде таблицы) ===
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
-    context_table = doc.add_table(rows=6, cols=2)  # 6 строк: устройство, ОС, сборка, стенд, инструменты, методология
+    context_table = doc.add_table(rows=6, cols=2)
     context_table.style = 'Table Grid'
     
     context_fields = [
@@ -218,22 +219,22 @@ def generate_docx(data, module_data_list, defects_df):
     for idx, module_info in enumerate(module_data_list):
         title = module_info['title']
         df = module_info['df']
-        doc.add_heading(f'3.{idx+1}. {title}', 2)  # Нумерация модулей
-        add_table_from_df(doc, df)  # Добавляем таблицу с результатами тестов
+        doc.add_heading(f'3.{idx+1}. {title}', 2)
+        add_table_from_df(doc, df)
 
     # === АНАЛИЗ ДЕФЕКТОВ ===
     doc.add_heading('4. АНАЛИЗ ДЕФЕКТОВ', 1)
-    add_table_from_df(doc, defects_df)  # Таблица с дефектами
+    add_table_from_df(doc, defects_df)
     doc.add_paragraph('Последствия:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['consequences']).paragraph_format.space_after = Pt(6)
 
     # === ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ ===
     doc.add_heading('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', 1)
-    for line in data['limitations'].split('\n'):  # Разбиваем по строкам
-        if line.strip():  # Проверяем, что строка не пустая
+    for line in data['limitations'].split('\n'):
+        if line.strip():
             p = doc.add_paragraph()
-            p.add_run(f"• {line.strip()}").italic = True  # Курсив для ограничений
-            p.paragraphs[0].runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый цвет
+            p.add_run(f"• {line.strip()}").italic = True
+            p.runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый цвет
             p.paragraph_format.space_after = Pt(2)
 
     # === ВЫВОД И РЕКОМЕНДАЦИИ ===
@@ -241,16 +242,16 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_paragraph('Вывод:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['conclusion']).paragraph_format.space_after = Pt(6)
     doc.add_paragraph('Рекомендации:').paragraph_format.space_after = Pt(6)
-    for line in data['recommendations_detailed'].split('\n'):  # Разбиваем по строкам
-        if line.strip():  # Проверяем, что строка не пустая
+    for line in data['recommendations_detailed'].split('\n'):
+        if line.strip():
             p = doc.add_paragraph()
-            p.add_run(f"• {line.strip()}").italic = True  # Курсив для рекомендаций
-            p.paragraphs[0].runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый цвет
+            p.add_run(f"• {line.strip()}").italic = True
+            p.runs[0].font.color.rgb = RGBColor(128, 128, 128)  # Серый цвет
             p.paragraph_format.space_after = Pt(2)
 
     # === ПОДПИСЬ (в виде таблицы) ===
     doc.add_heading('7. ПОДПИСЬ', 1)
-    signature_table = doc.add_table(rows=3, cols=2)  # 3 строки: роль, ФИО, дата
+    signature_table = doc.add_table(rows=3, cols=2)
     signature_table.style = 'Table Grid'
     signature_fields = [
         ('Роль:', data['role']),
