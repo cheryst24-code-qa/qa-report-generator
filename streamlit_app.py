@@ -621,32 +621,17 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.cell(row=row, column=col).border = thin_border
     row += 2
     
-# === СВОДКА (все ячейки с границами) ===
-ws.merge_cells(f'A{row}:E{row}')
-cell = ws.cell(row=row, column=1, value="📊 КЛЮЧЕВЫЕ МЕТРИКИ")
-cell.font = Font(bold=True, size=12, color="FFFFFF")
-cell.fill = section_fill
-cell.alignment = wrap_center
-# ← ОБЯЗАТЕЛЬНО: границы у ВСЕХ ячеек заголовка
-for col in range(1, 6):
-    ws.cell(row=row, column=col).border = thin_border
-row += 1
-
-# Данные: каждая ячейка с границей
-for label, value in summary_rows:
-    # Метрика (A)
-    cell_label = ws.cell(row=row, column=1, value=label)
-    cell_label.font = Font(bold=True)
-    cell_label.border = thin_border          # ← ГРАНИЦА!
-    cell_label.alignment = wrap_right
-    
-    # Значение (B-E объединены)
-    ws.merge_cells(f'B{row}:E{row}')
-    cell_value = ws.cell(row=row, column=2, value=value)
-    cell_value.border = thin_border          # ← ГРАНИЦА!
-    cell_value.alignment = wrap_left
+    # === СВОДКА (все ячейки с границами) ===
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="📊 КЛЮЧЕВЫЕ МЕТРИКИ")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = section_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
     row += 1
     
+    # ← СНАЧАЛА ОБЪЯВЛЯЕМ ДАННЫЕ
     summary_rows = [
         ["Проект", data["project"]],
         ["Версия", data["version"]],
@@ -660,14 +645,15 @@ for label, value in summary_rows:
         ["Рекомендация", data["recommendation"]],
     ]
     
+    # ← ТОЛЬКО ПОТОМ ИСПОЛЬЗУЕМ
     for label, value in summary_rows:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
-        ws.cell(row=row, column=1, value=label).border = thin_border  # ← ГРАНИЦА
+        ws.cell(row=row, column=1, value=label).border = thin_border
         ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
         ws.merge_cells(f'B{row}:E{row}')
         cell_value = ws.cell(row=row, column=2, value=value)
-        cell_value.border = thin_border  # ← ГРАНИЦА
+        cell_value.border = thin_border
         cell_value.alignment = wrap_left
         
         # Подсветка статуса
@@ -681,32 +667,17 @@ for label, value in summary_rows:
         row += 1
     row += 1
     
-    # === КОНТЕКСТ (с границами у всех ячеек) ===
+    # === КОНТЕКСТ (все ячейки с границами) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="⚙️ КОНТЕКСТ ТЕСТИРОВАНИЯ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = context_fill
     cell.alignment = wrap_center
-    # ← ОБЯЗАТЕЛЬНО: границы у ВСЕХ ячеек заголовка
-for col in range(1, 6):
-    ws.cell(row=row, column=col).border = thin_border
-row += 1
-
-# Данные: каждая ячейка с границей
-for label, value in summary_rows:
-    # Метрика (A)
-    cell_label = ws.cell(row=row, column=1, value=label)
-    cell_label.font = Font(bold=True)
-    cell_label.border = thin_border          # ← ГРАНИЦА!
-    cell_label.alignment = wrap_right
-    
-    # Значение (B-E объединены)
-    ws.merge_cells(f'B{row}:E{row}')
-    cell_value = ws.cell(row=row, column=2, value=value)
-    cell_value.border = thin_border          # ← ГРАНИЦА!
-    cell_value.alignment = wrap_left
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
     row += 1
     
+    # ← СНАЧАЛА ОБЪЯВЛЯЕМ ДАННЫЕ
     context_rows = [
         ["Устройство / Браузер", data["device_browser"]],
         ["ОС / Платформа", data["os_platform"]],
@@ -718,14 +689,15 @@ for label, value in summary_rows:
         ["Дата формирования", data["report_date"]],
     ]
     
+    # ← ТОЛЬКО ПОТОМ ИСПОЛЬЗУЕМ
     for label, value in context_rows:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
-        ws.cell(row=row, column=1, value=label).border = thin_border  # ← ГРАНИЦА
+        ws.cell(row=row, column=1, value=label).border = thin_border
         ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
         ws.merge_cells(f'B{row}:E{row}')
         cell_value = ws.cell(row=row, column=2, value=value)
-        cell_value.border = thin_border  # ← ГРАНИЦА
+        cell_value.border = thin_border
         cell_value.alignment = wrap_left
         row += 1
     row += 1
@@ -846,46 +818,32 @@ for label, value in summary_rows:
                 row += 1
         row += 1
     
-    # === ПОДПИСЬ (с границами у всех ячеек) ===
+    # === ПОДПИСЬ (все ячейки с границами) ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="Подпись")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
     cell.fill = signature_fill
     cell.alignment = wrap_center
-    # ← ОБЯЗАТЕЛЬНО: границы у ВСЕХ ячеек заголовка
-for col in range(1, 6):
-    ws.cell(row=row, column=col).border = thin_border
-row += 1
-
-# Данные: каждая ячейка с границей
-for label, value in summary_rows:
-    # Метрика (A)
-    cell_label = ws.cell(row=row, column=1, value=label)
-    cell_label.font = Font(bold=True)
-    cell_label.border = thin_border          # ← ГРАНИЦА!
-    cell_label.alignment = wrap_right
-    
-    # Значение (B-E объединены)
-    ws.merge_cells(f'B{row}:E{row}')
-    cell_value = ws.cell(row=row, column=2, value=value)
-    cell_value.border = thin_border          # ← ГРАНИЦА!
-    cell_value.alignment = wrap_left
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
     row += 1
     
+    # ← СНАЧАЛА ОБЪЯВЛЯЕМ ДАННЫЕ
     signature_rows = [
         ["Роль", data["role"]],
         ["ФИО", data["fullname"]],
         ["Дата", data["signature_date"]],
     ]
     
+    # ← ТОЛЬКО ПОТОМ ИСПОЛЬЗУЕМ
     for label, value in signature_rows:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
-        ws.cell(row=row, column=1, value=label).border = thin_border  # ← ГРАНИЦА
+        ws.cell(row=row, column=1, value=label).border = thin_border
         ws.cell(row=row, column=1, value=label).alignment = wrap_right
         
         ws.merge_cells(f'B{row}:E{row}')
         cell_value = ws.cell(row=row, column=2, value=value)
-        cell_value.border = thin_border  # ← ГРАНИЦА
+        cell_value.border = thin_border
         cell_value.alignment = wrap_left
         row += 1
     
@@ -968,7 +926,7 @@ with st.form("main_form"):
         os_platform = st.text_input("ОС / Платформа", "Android 15")
         build = st.text_input("Сборка", "lemanna-pro_241006.001.apk")
     with col4:
-        env_url = st.text_input("URL стенда", "https://test.lemanna.pro")
+        env_url = st.text_input("URL стенда", "https://test.lemanna.pro  ")
         tools = st.text_input("Инструменты", "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)")
         methodology = st.text_input("Методология", "Ручное функциональное тестирование + проверка безопасности")
 
