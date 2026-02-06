@@ -5,7 +5,7 @@ from docx import Document
 from docx.shared import Inches, Pt
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml import OxmlElement
-from docx.oxml.ns import qn 
+from docx.oxml.ns import qn
 import matplotlib
 matplotlib.use('Agg')  # Критически важно для работы в Streamlit Cloud
 import matplotlib.pyplot as plt
@@ -15,6 +15,7 @@ import traceback
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.utils import get_column_letter
 
 def set_col_width(col, width_twips):
     """Устанавливает ширину колонки в таблице DOCX"""
@@ -58,7 +59,7 @@ def add_table_from_df(doc, df):
         cell.text = str(col_name)
         for paragraph in cell.paragraphs:
             for run in paragraph.runs:
-                run.font.bold = True
+                run.font.bold = True  # type: ignore
             paragraph.paragraph_format.space_after = Pt(2)
             paragraph.paragraph_format.space_before = Pt(2)
 
@@ -76,8 +77,8 @@ def generate_docx(data, module_data_list, defects_df):
     """Генерирует строго деловой DOCX-отчёт"""
     doc = Document()
     # Исправление предупреждения BaseStyle.font: прямое присвоение
-    doc.styles['Normal'].font.name = 'Calibri Light' # type: ignore
-    doc.styles['Normal'].font.size = Pt(12) # type: ignore
+    doc.styles['Normal'].font.name = 'Calibri Light'  # type: ignore
+    doc.styles['Normal'].font.size = Pt(12)  # type: ignore
     
     # ЗАГОЛОВОК
     title = doc.add_heading(data["report_title"], 0)
@@ -112,7 +113,7 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True
+            run.font.bold = True  # type: ignore
         
         cell2 = info_table.cell(i, 1)
         cell2.text = value
@@ -148,7 +149,7 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True
+            run.font.bold = True  # type: ignore
         
         cell2 = summary_table.cell(i, 1)
         cell2.text = value
@@ -207,7 +208,7 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True
+            run.font.bold = True  # type: ignore
         
         cell2 = context_table.cell(i, 1)
         cell2.text = value
@@ -267,7 +268,7 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True
+            run.font.bold = True  # type: ignore
         
         cell2 = signature_table.cell(i, 1)
         cell2.text = value
@@ -574,7 +575,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     """Генерирует компактный XLSX-отчёт на ОДНОМ листе (рекомендуется для тестировщиков)"""
     from io import BytesIO
     import openpyxl
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, NamedStyle
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
     
     output = BytesIO()
@@ -599,9 +600,9 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     cell = ws[f'A{row}']  # type: ignore
     cell.value = data["report_title"]
-    cell.font = Font(name='Calibri', size=14, bold=True, color="FFFFFF")
-    cell.fill = header_fill
-    cell.alignment = Alignment(horizontal="center", vertical="center")
+    cell.font = Font(name='Calibri', size=14, bold=True, color="FFFFFF")  # type: ignore
+    cell.fill = header_fill  # type: ignore
+    cell.alignment = Alignment(horizontal="center", vertical="center")  # type: ignore
     row += 2
     
     # === СВОДКА ===
@@ -623,9 +624,9 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for summary_row in summary_data:
         for col_idx, value in enumerate(summary_row, start=1):
             cell = ws.cell(row=row, column=col_idx, value=value)  # type: ignore
-            cell.border = thin_border
+            cell.border = thin_border  # type: ignore
             if col_idx % 2 == 1:  # Нечётные колонки — метрики
-                cell.font = Font(bold=True)
+                cell.font = Font(bold=True)  # type: ignore
         row += 1
     row += 1
     
@@ -667,10 +668,10 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     test_headers = ["Модуль", "ID", "Сценарий", "Статус", "Комментарий"]
     for col_idx, header in enumerate(test_headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)  # type: ignore
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = header_fill
-        cell.border = thin_border
-        cell.alignment = Alignment(wrap_text=True, horizontal="center")
+        cell.font = Font(bold=True, color="FFFFFF")  # type: ignore
+        cell.fill = header_fill  # type: ignore
+        cell.border = thin_border  # type: ignore
+        cell.alignment = Alignment(wrap_text=True, horizontal="center")  # type: ignore
     row += 1
     
     # Данные тестов
@@ -683,13 +684,13 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 ws.cell(row=row, column=2, value=test_row[0]).border = thin_border  # type: ignore
                 ws.cell(row=row, column=3, value=test_row[1]).border = thin_border  # type: ignore
                 status_cell = ws.cell(row=row, column=4, value=test_row[2])  # type: ignore
-                status_cell.border = thin_border
+                status_cell.border = thin_border  # type: ignore
                 if str(test_row[2]).upper() == "PASS":
-                    status_cell.fill = pass_fill
-                    status_cell.font = Font(color="006100", bold=True)
+                    status_cell.fill = pass_fill  # type: ignore
+                    status_cell.font = Font(color="006100", bold=True)  # type: ignore
                 elif str(test_row[2]).upper() == "FAIL":
-                    status_cell.fill = fail_fill
-                    status_cell.font = Font(color="9C0006", bold=True)
+                    status_cell.fill = fail_fill  # type: ignore
+                    status_cell.font = Font(color="9C0006", bold=True)  # type: ignore
                 ws.cell(row=row, column=5, value=test_row[3]).border = thin_border  # type: ignore
                 row += 1
     row += 1
@@ -706,10 +707,10 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     defect_headers = ["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"]
     for col_idx, header in enumerate(defect_headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)  # type: ignore
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = header_fill
-        cell.border = thin_border
-        cell.alignment = Alignment(wrap_text=True, horizontal="center")
+        cell.font = Font(bold=True, color="FFFFFF")  # type: ignore
+        cell.fill = header_fill  # type: ignore
+        cell.border = thin_border  # type: ignore
+        cell.alignment = Alignment(wrap_text=True, horizontal="center")  # type: ignore
     row += 1
     
     # Данные дефектов
@@ -717,16 +718,16 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         for _, defect_row in defects_df.iterrows():
             for col_idx, value in enumerate(defect_row, start=1):
                 cell = ws.cell(row=row, column=col_idx, value=value)  # type: ignore
-                cell.border = thin_border
-                cell.alignment = Alignment(wrap_text=True, vertical="top")
+                cell.border = thin_border  # type: ignore
+                cell.alignment = Alignment(wrap_text=True, vertical="top")  # type: ignore
                 if col_idx == 4:  # Серьёзность
                     sev = str(value)
                     if "Critical" in sev:
-                        cell.fill = critical_fill
-                        cell.font = Font(color="FFFFFF", bold=True)
+                        cell.fill = critical_fill  # type: ignore
+                        cell.font = Font(color="FFFFFF", bold=True)  # type: ignore
                     elif "Major" in sev:
-                        cell.fill = major_fill
-                        cell.font = Font(color="FFFFFF", bold=True)
+                        cell.fill = major_fill  # type: ignore
+                        cell.font = Font(color="FFFFFF", bold=True)  # type: ignore
             row += 1
     else:
         ws.merge_cells(f'A{row}:E{row}')  # type: ignore
@@ -778,23 +779,13 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.cell(row=row, column=1, value=label).border = thin_border  # type: ignore
         row += 1
     
-    # Автоподбор ширины колонок
-    for col in range(1, 6):
-        ws.column_dimensions[get_column_letter(col)].width = {  # type: ignore
-            1: 18, 2: 12, 3: 35, 4: 12, 5: 50
-        }.get(col, 20)
-    
-    wb.save(output)
-    output.seek(0)
-    return output
-
-    # === ДОПОЛНИТЕЛЬНЫЙ БЛОК: ДАННЫЕ ДЛЯ ДИАГРАММ (скрытый) ===
+    # === ДАННЫЕ ДЛЯ ДИАГРАММ (внутри функции!) ===
     row += 2
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
-    ws[f'A{row}'].value = "📈 ДАННЫЕ ДЛЯ ДИАГРАММ (скрыть при печати)"  # type: ignore
+    ws[f'A{row}'].value = "📈 ДАННЫЕ ДЛЯ ДИАГРАММ"  # type: ignore
     ws[f'A{row}'].font = Font(italic=True, color="808080")  # type: ignore
     row += 1
-
+    
     # Данные для диаграммы распределения тестов
     ws.cell(row=row, column=1, value="Тип").font = Font(bold=True)  # type: ignore
     ws.cell(row=row, column=2, value="Количество").font = Font(bold=True)  # type: ignore
@@ -805,7 +796,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws.cell(row=row, column=1, value="FAIL").fill = fail_fill  # type: ignore
     ws.cell(row=row, column=2, value=data['fail'])  # type: ignore
     row += 2
-
+    
     # Данные для диаграммы дефектов
     ws.cell(row=row, column=1, value="Серьёзность").font = Font(bold=True)  # type: ignore
     ws.cell(row=row, column=2, value="Количество").font = Font(bold=True)  # type: ignore
@@ -815,24 +806,23 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     row += 1
     ws.cell(row=row, column=1, value="Major (S2)").fill = major_fill  # type: ignore
     ws.cell(row=row, column=2, value=data['s2'])  # type: ignore
-
-    # Инструкция для пользователя (в ячейке примечания)
-    instruction = (
-        "💡 Как построить диаграммы за 10 секунд:\n"
-        "1. Выделите диапазон A{start_row}:B{end_row_pass}\n"
-        "2. Вкладка 'Вставка' → 'Круговая диаграмма'\n"
-        "3. Повторите для дефектов (диапазон A{start_defects}:B{end_defects})"
-    ).format(
-        start_row=row-5,
-        end_row_pass=row-3,
-        start_defects=row-2,
-        end_defects=row
-    )
-
-    # Добавляем примечание к заголовку
-    from openpyxl.comments import Comment
-    comment = Comment(instruction, "Генератор отчётов")
-    ws[f'A{row-6}'].comment = comment  # type: ignore
+    
+    # Простая инструкция в ячейке
+    row += 2
+    ws.merge_cells(f'A{row}:F{row}')  # type: ignore
+    ws[f'A{row}'].value = "💡 Совет: выделите диапазон с данными → Вставка → Диаграмма"  # type: ignore
+    ws[f'A{row}'].font = Font(italic=True, color="1E90FF")  # type: ignore
+    ws[f'A{row}'].alignment = Alignment(wrap_text=True)  # type: ignore
+    
+    # Автоподбор ширины колонок
+    for col in range(1, 6):
+        ws.column_dimensions[get_column_letter(col)].width = {  # type: ignore
+            1: 18, 2: 12, 3: 35, 4: 12, 5: 50
+        }.get(col, 20)
+    
+    wb.save(output)
+    output.seek(0)
+    return output
 
 # === ДАННЫЕ ПО УМОЛЧАНИЮ ===
 default_modules = [
@@ -931,7 +921,7 @@ with st.form("main_form"):
     
     st.header("6. Вывод и рекомендации")
     conclusion = st.text_area("Вывод", "Сборка 241006.001 содержит критические уязвимости безопасности, делающие её непригодной для выпуска в production. Наличие S1 дефектов нарушает базовые принципы защиты данных пользователей.")
-    recommendations_detailed = st.text_area("Рекомендации (подробно)", "Немедленно исправить уязвимости BUG-SEC-001 и BUG-SEC-002.\nРеализовать fuzzy search для повышения юзабилити (BUG-SEARCH-001).\nПровести повторное тестирование после фиксов с фокусом на:\n Повторную проверку полей ввода на инъекции\n Тестирование сценариев поиска с опечатками\n Настроить автоматизированную проверку безопасности (например, OWASP ZAP) в CI/CD.")
+    recommendations_detailed = st.text_area("Рекомендации (подробно)", "Немедленно исправить уязвимости BUG-SEC-001 и BUG-SEC-002.\nРеализовать fuzzy search для повышения юзабилити (BUG-SEARCH-001).\nПровести повторное тестирование после фиксов с фокусом на:\n- Повторную проверку полей ввода на инъекции\n- Тестирование сценариев поиска с опечатками\n- Настроить автоматизированную проверку безопасности (например, OWASP ZAP) в CI/CD.")
     
     st.header("7. Подпись")
     role = st.text_input("Роль", "QA-инженер")
@@ -1004,12 +994,12 @@ if submitted:
         docx_buffer = generate_docx(data, module_data_list, defects)
         html_buffer = generate_html_report(data, module_data_list, defects)
         xlsx_buffer = generate_xlsx_single_sheet(data, module_data_list, defects)
-
+        
         st.success("✅ Отчёт готов!")
         
-        # КНОПКИ СКАЧИВАНИЯ (обновите колонки)
+        # КНОПКИ СКАЧИВАНИЯ
         col1, col2, col3 = st.columns(3)
-
+        
         with col1:
             st.download_button(
                 "📄 DOCX",
@@ -1019,7 +1009,7 @@ if submitted:
                 use_container_width=True,
                 type="primary"
             )
-
+        
         with col2:
             st.download_button(
                 "📊 XLSX",
@@ -1029,7 +1019,7 @@ if submitted:
                 use_container_width=True,
                 type="secondary"
             )
-
+        
         with col3:
             st.download_button(
                 "🌐 HTML",
