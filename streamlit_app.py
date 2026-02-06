@@ -12,6 +12,9 @@ import matplotlib.pyplot as plt
 import io
 import base64
 import traceback
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 def set_col_width(col, width_twips):
     """Устанавливает ширину колонки в таблице DOCX"""
@@ -567,6 +570,159 @@ def generate_html_report(data, module_data_list, defects_df):
     buffer.seek(0)
     return buffer
 
+def generate_xlsx(data, module_data_list, defects_df):
+    """Генерирует профессиональный XLSX-отчёт с несколькими листами"""
+    from io import BytesIO
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils.dataframe import dataframe_to_rows
+    
+    output = BytesIO()
+    wb = openpyxl.Workbook()
+    
+    # === ЛИСТ 1: СВОДКА ===
+    ws_summary = wb.active
+    if ws_summary is None:  # Защита от ложных срабатываний анализатора
+        ws_summary = wb.create_sheet("Сводка")
+    ws_summary.title = "Сводка"  # type: ignore
+    
+    # Заголовок (без цепочки вызовов, чтобы избежать предупреждений)
+    ws_summary.merge_cells('A1:D1')  # type: ignore
+    cell_a1 = ws_summary['A1']  # type: ignore
+    cell_a1.value = data["report_title"]  # type: ignore
+    cell_a1.font = Font(name='Calibri', size=14, bold=True, color="FFFFFF")  # type: ignore
+    cell_a1.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")  # type: ignore
+    cell_a1.alignment = Alignment(horizontal="center", vertical="center")  # type: ignore
+    
+    # Сводные данные
+    summary_data = [
+        ["Метрика", "Значение"],
+        ["Проект", data["project"]],
+        ["Версия", data["version"]],
+        ["Период тестирования", data["test_period"]],
+        ["Всего тест-кейсов", data["total_tc"]],
+        ["PASS", f"{data['pass']} ({data['pass']/data['total_tc']*100:.1f}%)"],
+        ["FAIL", f"{data['fail']} ({data['fail']/data['total_tc']*100:.1f}%)"],
+        ["Critical (S1)", data["s1"]],
+        ["Major (S2)", data["s2"]],
+        ["Статус релиза", data["release_status"]],
+        ["Рекомендация", data["recommendation"]],
+    ]
+    
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+    
+    for row_idx, row_data in enumerate(summary_data, start=3):
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws_summary.cell(row=row_idx, column=col_idx, value=value)  # type: ignore
+            if row_idx == 3:  # Заголовки
+                cell.font = Font(bold=True, color="FFFFFF")  # type: ignore
+                cell.fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")  # type: ignore
+            elif col_idx == 1:  # Левая колонка
+                cell.font = Font(bold=True)  # type: ignore
+            cell.border = thin_border  # type: ignore
+            cell.alignment = Alignment(wrap_text=True)  # type: ignore
+    
+    ws_summary.column_dimensions['A'].width = 25  # type: ignore
+    ws_summary.column_dimensions['B'].width = 40  # type: ignore
+    
+    # === ЛИСТ 2: РЕЗУЛЬТАТЫ ТЕСТОВ ===
+    ws_tests = wb.create_sheet("Результаты тестов")
+    
+    # Собираем все тест-кейсы
+    all_tests = []
+    for module_info in module_data_list:
+        df = module_info['df'].copy()
+        if not df.empty:
+            df.insert(0, 'Модуль', module_info['title'])
+            all_tests.append(df)
+    
+    if all_tests:
+        tests_df = pd.concat(all_tests, ignore_index=True)
+        for r_idx, row in enumerate(dataframe_to_rows(tests_df, index=False, header=True), 1):
+            for c_idx, value in enumerate(row, 1):
+                cell = ws_tests.cell(row=r_idx, column=c_idx, value=value)  # type: ignore
+                if r_idx == 1:
+                    cell.font = Font(bold=True, color="FFFFFF")  # type: ignore
+                    cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")  # type: ignore
+                elif c_idx == 4:  # Статус
+                    status = str(value).upper()
+                    if status == "PASS":
+                        cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")  # type: ignore
+                        cell.font = Font(color="006100", bold=True)  # type: ignore
+                    elif status == "FAIL":
+                        cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")  # type: ignore
+                        cell.font = Font(color="9C0006", bold=True)  # type: ignore
+                cell.border = thin_border  # type: ignore
+                cell.alignment = Alignment(wrap_text=True, vertical="top")  # type: ignore
+    
+    ws_tests.column_dimensions['A'].width = 20  # type: ignore
+    ws_tests.column_dimensions['B'].width = 12  # type: ignore
+    ws_tests.column_dimensions['C'].width = 40  # type: ignore
+    ws_tests.column_dimensions['D'].width = 10  # type: ignore
+    ws_tests.column_dimensions['E'].width = 50  # type: ignore
+    
+    # === ЛИСТ 3: ДЕФЕКТЫ ===
+    ws_defects = wb.create_sheet("Дефекты")
+    
+    if not defects_df.empty:
+        for r_idx, row in enumerate(dataframe_to_rows(defects_df, index=False, header=True), 1):
+            for c_idx, value in enumerate(row, 1):
+                cell = ws_defects.cell(row=r_idx, column=c_idx, value=value)  # type: ignore
+                if r_idx == 1:
+                    cell.font = Font(bold=True, color="FFFFFF")  # type: ignore
+                    cell.fill = PatternFill(start_color="7030A0", end_color="7030A0", fill_type="solid")  # type: ignore
+                elif c_idx == 4:  # Серьёзность
+                    sev = str(value)
+                    if "Critical" in sev:
+                        cell.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")  # type: ignore
+                        cell.font = Font(color="FFFFFF", bold=True)  # type: ignore
+                    elif "Major" in sev:
+                        cell.fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")  # type: ignore
+                        cell.font = Font(color="FFFFFF", bold=True)  # type: ignore
+                cell.border = thin_border  # type: ignore
+                cell.alignment = Alignment(wrap_text=True, vertical="top")  # type: ignore
+    
+    ws_defects.column_dimensions['A'].width = 15  # type: ignore
+    ws_defects.column_dimensions['B'].width = 15  # type: ignore
+    ws_defects.column_dimensions['C'].width = 50  # type: ignore
+    ws_defects.column_dimensions['D'].width = 18  # type: ignore
+    ws_defects.column_dimensions['E'].width = 15  # type: ignore
+    
+    # === ЛИСТ 4: КОНТЕКСТ ===
+    ws_context = wb.create_sheet("Контекст")
+    context_data = [
+        ["Параметр", "Значение"],
+        ["Устройство / Браузер", data["device_browser"]],
+        ["ОС / Платформа", data["os_platform"]],
+        ["Сборка", data["build"]],
+        ["Стенд", data["env_url"].strip()],
+        ["Инструменты", data["tools"]],
+        ["Методология", data["methodology"]],
+        ["Тест-инженер", data["engineer"]],
+        ["Дата формирования", data["report_date"]],
+    ]
+    
+    for row_idx, row_data in enumerate(context_data, start=1):
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws_context.cell(row=row_idx, column=col_idx, value=value)  # type: ignore
+            if row_idx == 1:
+                cell.font = Font(bold=True, color="FFFFFF")  # type: ignore
+                cell.fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")  # type: ignore
+            elif col_idx == 1:
+                cell.font = Font(bold=True)  # type: ignore
+            cell.border = thin_border  # type: ignore
+    
+    ws_context.column_dimensions['A'].width = 25  # type: ignore
+    ws_context.column_dimensions['B'].width = 50  # type: ignore
+    
+    # Сохранение
+    wb.save(output)
+    output.seek(0)
+    return output
+
 # === ДАННЫЕ ПО УМОЛЧАНИЮ ===
 default_modules = [
     {"title": "Главный экран и навигация", "df": pd.DataFrame([
@@ -736,25 +892,36 @@ if submitted:
         # ГЕНЕРАЦИЯ ОТЧЁТОВ
         docx_buffer = generate_docx(data, module_data_list, defects)
         html_buffer = generate_html_report(data, module_data_list, defects)
-        
+        xlsx_buffer = generate_xlsx(data, module_data_list, defects)
+
         st.success("✅ Отчёт готов!")
         
-        # КНОПКИ СКАЧИВАНИЯ
-        col1, col2 = st.columns(2)
-        
+        # КНОПКИ СКАЧИВАНИЯ (обновите колонки)
+        col1, col2, col3 = st.columns(3)
+
         with col1:
             st.download_button(
-                "📄 Скачать DOCX",
+                "📄 DOCX",
                 docx_buffer,
                 "Отчёт_о_тестировании.docx",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True,
                 type="primary"
             )
-        
+
         with col2:
             st.download_button(
-                "🌐 Скачать HTML с диаграммами",
+                "📊 XLSX",
+                xlsx_buffer,
+                "Отчёт_о_тестировании.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                type="secondary"
+            )
+
+        with col3:
+            st.download_button(
+                "🌐 HTML",
                 html_buffer,
                 "Отчёт_о_тестировании.html",
                 "text/html",
