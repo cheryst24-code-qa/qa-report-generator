@@ -78,7 +78,7 @@ def generate_docx(data, module_data_list, defects_df):
     
     # Настройка стиля документа
     style = doc.styles['Normal']
-    style.font.name = 'Calibri'
+    style.font.name = 'Calibri Light'
     style.font.size = Pt(11)
     
     # === ЗАГОЛОВОК ОТЧЁТА (центрированный, крупный) ===
@@ -305,9 +305,9 @@ def generate_docx(data, module_data_list, defects_df):
     set_col_width(signature_table.columns[1], second_col_width_twips)
     
     signature_fields = [
-        ('Роль:', data['role']),
-        ('ФИО:', data['fullname']),
-        ('Дата:', data['signature_date'])
+        ('Роль :', data['role']),
+        ('ФИО :', data['fullname']),
+        ('Дата :', data['signature_date'])
     ]
     
     for i, (label, value) in enumerate(signature_fields):
@@ -405,7 +405,7 @@ def generate_html_report(data, module_data_list, defects_df):
     <title>{escape_html(data['report_title'])}</title>
     <style>
         body {{
-            font-family: Calibri, 'Segoe UI', sans-serif;
+            font-family: Calibri Light, 'Segoe UI', sans-serif;
             font-size: 11pt;
             line-height: 1.5;
             max-width: 800px;
@@ -645,7 +645,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     # Заголовок
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value=data["report_title"])
-    cell.font = Font(name='Calibri', size=16, bold=True, color="FFFFFF")
+    cell.font = Font(name='Calibri Light', size=16, bold=True, color="FFFFFF")
     cell.fill = header_fill
     cell.alignment = wrap_center
     for col in range(1, 6):
