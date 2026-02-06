@@ -5,6 +5,8 @@ from docx import Document
 from docx.shared import Inches, Pt
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml.shared import OxmlElement, qn
+import matplotlib
+matplotlib.use('Agg')  # Критически важно для работы в Streamlit Cloud
 import matplotlib.pyplot as plt
 import io
 import base64
@@ -19,17 +21,8 @@ def set_col_width(col, width_twips):
         tcW.set(qn('w:type'), 'dxa')
         tc.append(tcW)
 
-def plot_to_buffer():
-    """Сохраняет диаграмму в буфер и возвращает его"""
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
-    buf.seek(0)
-    plt.close()
-    return buf
-
 def add_table_from_df(doc, df):
     """Создаёт таблицу с фиксированной шириной и границами"""
-    # ИСПРАВЛЕНИЕ: Проверка на пустой список колонок
     if len(df.columns) == 0:
         doc.add_paragraph("Нет данных для отображения")
         doc.add_paragraph().paragraph_format.space_after = Pt(6)
@@ -161,13 +154,13 @@ def generate_docx(data, module_data_list, defects_df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # ДИАГРАММЫ
+    # ДИАГРАММЫ (гарантированно работают в Streamlit Cloud)
     plt.figure(figsize=(5, 4))
     plt.pie([data['pass'], data['fail']], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
             colors=['#4CAF50', '#F44336'], startangle=90)
     plt.title('Рис. 1. Распределение результатов тест-кейсов')
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
     buf.seek(0)
     plt.close()
     doc.add_picture(buf, width=Inches(5))
@@ -178,12 +171,14 @@ def generate_docx(data, module_data_list, defects_df):
                    color=['#F44336', '#FF9800'])
     plt.title('Рис. 2. Дефекты по уровню серьёзности')
     plt.ylabel('Количество')
+    plt.ylim(0, max(data['s1'], data['s2'], 1) * 1.3)
     for bar in bars:
         h = bar.get_height()
         if h > 0:
             plt.text(bar.get_x() + bar.get_width()/2, h + 0.05, str(int(h)), ha='center', va='bottom')
+    plt.grid(axis='y', alpha=0.3, linestyle='--')
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
     buf.seek(0)
     plt.close()
     doc.add_picture(buf, width=Inches(5))
@@ -286,7 +281,7 @@ def generate_docx(data, module_data_list, defects_df):
     return buffer
 
 def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
-    """Генерирует диаграммы и возвращает их как base64 строки с гарантией корректности"""
+    """Генерирует диаграммы и возвращает их как корректные base64 строки"""
     # Диаграмма 1: Распределение результатов
     plt.figure(figsize=(6, 4.5))
     plt.pie([pass_count, fail_count], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
@@ -294,7 +289,6 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     plt.title('Рис. 1. Распределение результатов тест-кейсов', fontsize=12, pad=15)
     buf1 = io.BytesIO()
     plt.savefig(buf1, format='png', dpi=150, bbox_inches='tight', facecolor='white')
-    buf1.seek(0)
     plt.close()
     
     # Диаграмма 2: Дефекты по серьёзности
@@ -312,66 +306,266 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     plt.grid(axis='y', alpha=0.3, linestyle='--')
     buf2 = io.BytesIO()
     plt.savefig(buf2, format='png', dpi=150, bbox_inches='tight', facecolor='white')
-    buf2.seek(0)
     plt.close()
     
-    # === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ===
-    # Используем корректный метод кодирования с гарантией
+    # === КРИТИЧЕСКИ ВАЖНО: корректное получение данных из буфера ===
+    # Используем getvalue() для гарантированного получения полных данных
     chart1_base64 = base64.b64encode(buf1.getvalue()).decode('utf-8')
     chart2_base64 = base64.b64encode(buf2.getvalue()).decode('utf-8')
     
     return chart1_base64, chart2_base64
 
 def generate_html_report(data, module_data_list, defects_df):
-    """Генерирует HTML-версию отчёта с гарантией корректного отображения диаграмм"""
+    """Генерирует HTML-версию отчёта с корректными диаграммами и форматированием"""
     # Генерация диаграмм
     chart1, chart2 = generate_chart_base64(data['pass'], data['fail'], data['s1'], data['s2'])
-    
-    # === ДОБАВЛЕНО: проверка корректности данных ===
-    if not chart1 or not chart2:
-        raise ValueError("Диаграммы не сгенерированы корректно")
     
     # Расчёт процентов
     total = data['total_tc']
     pass_pct = data['pass'] / total * 100 if total > 0 else 0
     fail_pct = 100 - pass_pct
     
+    # === КРИТИЧЕСКИ ВАЖНО: экранирование специальных символов в данных ===
+    def escape_html(text):
+        if not isinstance(text, str):
+            return str(text)
+        return (text.replace('&', '&amp;')
+                    .replace('<', '&lt;')
+                    .replace('>', '&gt;')
+                    .replace('"', '&quot;')
+                    .replace("'", '&#39;'))
+    
     # Создание HTML с профессиональным форматированием
-    html = f"""
-    <!DOCTYPE html>
-    <html lang="ru">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{data['report_title']}</title>
-        <style>
-            /* ... остальной CSS ... */
-        </style>
-    </head>
-    <body>
-        <!-- ... остальной HTML ... -->
-        
-        <!-- === ГАРАНТИРОВАННО КОРРЕКТНЫЙ ФОРМАТ ДЛЯ ОБЕИХ ДИАГРАММ === -->
-        <div class="chart-container">
-            <!-- Используем ВСЕГДА полный формат data URI -->
-            <img src="data:image/png;base64,{chart1}" 
-                 alt="Распределение результатов тест-кейсов" 
-                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
-            <div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
-        </div>
-        
-        <div class="chart-container">
-            <!-- Используем ВСЕГДА полный формат data URI -->
-            <img src="data:image/png;base64,{chart2}" 
-                 alt="Дефекты по уровню серьёзности" 
-                 style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
-            <div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
-        </div>
-        
-        <!-- ... остальной HTML ... -->
-    </body>
-    </html>
+    html = f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{escape_html(data['report_title'])}</title>
+    <style>
+        body {{
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 12pt;
+            line-height: 1.5;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #000;
+        }}
+        h1 {{
+            text-align: center;
+            font-size: 16pt;
+            font-weight: bold;
+            margin-bottom: 25px;
+            margin-top: 0;
+        }}
+        h2 {{
+            font-size: 14pt;
+            margin-top: 25px;
+            margin-bottom: 12px;
+            padding-bottom: 4px;
+            border-bottom: 2px solid #000;
+        }}
+        h3 {{
+            font-size: 13pt;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0 18px 0;
+            page-break-inside: avoid;
+        }}
+        th, td {{
+            border: 1px solid #000;
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: top;
+        }}
+        th {{
+            background-color: #f5f5f5;
+            font-weight: bold;
+        }}
+        /* Фиксированная ширина колонок как в DOCX (25%/75%) */
+        .info-table td:first-child,
+        .summary-table td:first-child,
+        .context-table td:first-child,
+        .signature-table td:first-child {{
+            width: 25%;
+            font-weight: bold;
+            background-color: #f9f9f9;
+        }}
+        .info-table td:last-child,
+        .summary-table td:last-child,
+        .context-table td:last-child,
+        .signature-table td:last-child {{
+            width: 75%;
+        }}
+        .status-pass {{ color: #2e7d32; font-weight: bold; }}
+        .status-fail {{ color: #d32f2f; font-weight: bold; }}
+        .risk {{ color: #d32f2f; font-weight: bold; }}
+        .chart-container {{
+            text-align: center;
+            margin: 25px 0;
+            page-break-inside: avoid;
+        }}
+        .chart-title {{
+            font-weight: bold;
+            margin-top: 8px;
+            font-size: 11pt;
+        }}
+        ul {{
+            padding-left: 20px;
+            margin: 10px 0;
+        }}
+        li {{
+            margin-bottom: 5px;
+        }}
+        .no-print {{
+            display: none;
+        }}
+        @media print {{
+            body {{
+                padding: 15px;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }}
+            .chart-container img {{
+                max-width: 100% !important;
+                height: auto !important;
+            }}
+            .no-print {{
+                display: none !important;
+            }}
+            table {{
+                page-break-inside: avoid;
+            }}
+            h2, h3 {{
+                page-break-after: avoid;
+            }}
+        }}
+        @page {{
+            size: A4;
+            margin: 15mm;
+        }}
+    </style>
+</head>
+<body>
+    <h1>{escape_html(data['report_title'])}</h1>
+    
+    <!-- Информационная таблица (25%/75%) -->
+    <table class="info-table">
+        <tr><td>Проект:</td><td>{escape_html(data['project'])}</td></tr>
+        <tr><td>Тип приложения:</td><td>{escape_html(data['app_type'])}</td></tr>
+        <tr><td>Версия приложения:</td><td>{escape_html(data['version'])}</td></tr>
+        <tr><td>Период тестирования:</td><td>{escape_html(data['test_period'])}</td></tr>
+        <tr><td>Дата формирования отчёта:</td><td>{escape_html(data['report_date'])}</td></tr>
+        <tr><td>Тест-инженер:</td><td>{escape_html(data['engineer'])}</td></tr>
+    </table>
+    
+    <h2>1. КРАТКОЕ РЕЗЮМЕ</h2>
+    <table class="summary-table">
+        <tr><td>Статус релиза:</td><td>{escape_html(data['release_status'])}</td></tr>
+        <tr><td>Критические дефекты (S1):</td><td>{data['s1']}</td></tr>
+        <tr><td>Мажорные дефекты (S2):</td><td>{data['s2']}</td></tr>
+        <tr><td>Всего тест-кейсов:</td><td>{data['total_tc']}</td></tr>
+        <tr><td>Успешно (Pass):</td><td class="status-pass">{data['pass']} ({pass_pct:.1f}%)</td></tr>
+        <tr><td>Упали (Fail):</td><td class="status-fail">{data['fail']} ({fail_pct:.1f}%)</td></tr>
+        <tr><td>Основной риск:</td><td class="risk">{escape_html(data['risk'])}</td></tr>
+        <tr><td>Рекомендация:</td><td>{escape_html(data['recommendation'])}</td></tr>
+    </table>
+    
+    <!-- === ГАРАНТИРОВАННО КОРРЕКТНЫЕ ДИАГРАММЫ === -->
+    <div class="chart-container">
+        <img src="data:image/png;base64,{chart1}" 
+             alt="Распределение результатов тест-кейсов" 
+             style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
+        <div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
+    </div>
+    
+    <div class="chart-container">
+        <img src="data:image/png;base64,{chart2}" 
+             alt="Дефекты по уровню серьёзности" 
+             style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
+        <div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
+    </div>
+    
+    <h2>2. КОНТЕКСТ ТЕСТИРОВАНИЯ</h2>
+    <table class="context-table">
+        <tr><td>Устройство / Браузер:</td><td>{escape_html(data['device_browser'])}</td></tr>
+        <tr><td>ОС / Платформа:</td><td>{escape_html(data['os_platform'])}</td></tr>
+        <tr><td>Сборка / Версия:</td><td>{escape_html(data['build'])}</td></tr>
+        <tr><td>Стенд:</td><td>Тестовое окружение (адрес: {escape_html(data['env_url'])})</td></tr>
+        <tr><td>Инструменты:</td><td>{escape_html(data['tools'])}</td></tr>
+        <tr><td>Методология:</td><td>{escape_html(data['methodology'])}</td></tr>
+    </table>
+"""
+    
+    # Результаты по модулям
+    html += "<h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>"
+    for idx, module_info in enumerate(module_data_list):
+        html += f"<h3>3.{idx+1}. {escape_html(module_info['title'])}</h3>"
+        html += '<table><tr><th style="width: 15%;">ID</th><th>Сценарий</th><th style="width: 12%;">Статус</th><th>Комментарий</th></tr>'
+        df = module_info['df']
+        if not df.empty:
+            for _, row in df.iterrows():
+                status_class = "status-pass" if str(row[2]).upper() == "PASS" else "status-fail" if str(row[2]).upper() == "FAIL" else ""
+                html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td class='{status_class}'>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td></tr>"
+        else:
+            html += "<tr><td colspan='4' style='text-align:center'>Нет данных</td></tr>"
+        html += "</table>"
+    
+    # Анализ дефектов
+    html += "<h2>4. АНАЛИЗ ДЕФЕКТОВ</h2>"
+    html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 15%;">Модуль</th><th>Заголовок</th><th style="width: 20%;">Серьёзность</th><th style="width: 15%;">Статус</th></tr>'
+    if not defects_df.empty:
+        for _, row in defects_df.iterrows():
+            html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td><td>{escape_html(row[4])}</td></tr>"
+    else:
+        html += "<tr><td colspan='5' style='text-align:center'>Нет данных</td></tr>"
+    html += "</table>"
+    html += f"<p><strong>Последствия:</strong><br>{escape_html(data['consequences']).replace(chr(10), '<br>')}</p>"
+    
+    # Ограничения тестирования
+    html += "<h2>5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ</h2><ul>"
+    for line in data['limitations'].split('\n'):
+        if line.strip():
+            html += f"<li>{escape_html(line.strip())}</li>"
+    html += "</ul>"
+    
+    # Вывод и рекомендации
+    html += f"""
+        <h2>6. ВЫВОД И РЕКОМЕНДАЦИИ</h2>
+        <p><strong>Вывод:</strong><br>{escape_html(data['conclusion'])}</p>
+        <p><strong>Рекомендации:</strong></p>
+        <ul>
     """
+    for line in data['recommendations_detailed'].split('\n'):
+        if line.strip():
+            html += f"<li>{escape_html(line.strip())}</li>"
+    html += "</ul>"
+    
+    # Подпись
+    html += f"""
+        <h2>7. ПОДПИСЬ</h2>
+        <table class="signature-table">
+            <tr><td>Роль:</td><td>{escape_html(data['role'])}</td></tr>
+            <tr><td>ФИО:</td><td>{escape_html(data['fullname'])}</td></tr>
+            <tr><td>Дата:</td><td>{escape_html(data['signature_date'])}</td></tr>
+        </table>
+        
+        <div class="no-print" style="margin-top: 30px; padding: 15px; background-color: #e3f2fd; border-radius: 5px; border: 1px solid #90caf9;">
+            <h3 style="margin-top: 0;">💡 Как сохранить отчёт как PDF:</h3>
+            <ol>
+                <li>Нажмите <strong>Ctrl+P</strong> (Windows) или <strong>Cmd+P</strong> (Mac)</li>
+                <li>Выберите «Сохранить как PDF»</li>
+                <li>Установите ориентацию «Книжная», масштаб «100%»</li>
+                <li>Нажмите «Сохранить»</li>
+            </ol>
+        </div>
+    </body>
+</html>"""
     
     buffer = io.BytesIO()
     buffer.write(html.encode('utf-8'))
@@ -415,12 +609,11 @@ default_defects = pd.DataFrame([
 st.set_page_config(page_title="Универсальный генератор QA-отчёта", layout="wide")
 st.title("📄 Универсальный генератор отчёта о тестировании")
 
-# st.info("""
-# ✨ **Отличие от обычного HTML-отчёта:**
-# - Добавлены профессиональные диаграммы (как в DOCX)
-# - Фиксированная ширина колонок в таблицах (25%/75%) — как в деловом документе
-# - Оптимизация для печати: при сохранении как PDF через браузер получите идентичный внешний вид
-# """)
+st.info("""
+✅ **Исправлено:** Диаграммы теперь корректно отображаются в HTML-отчёте.
+✅ **Исправлено:** Фиксированная ширина колонок (25%/75%) как в деловом документе.
+✅ **Исправлено:** Экранирование спецсимволов для корректного отображения.
+""")
 
 # === ФОРМА ВВОДА ===
 with st.form("main_form"):
@@ -549,7 +742,7 @@ if submitted:
         docx_buffer = generate_docx(data, module_data_list, defects)
         html_buffer = generate_html_report(data, module_data_list, defects)
         
-        st.success("✅ Отчёт готов! Диаграммы и профессиональное форматирование таблиц добавлены.")
+        st.success("✅ Отчёт готов! Диаграммы и форматирование таблиц корректны.")
         
         # КНОПКИ СКАЧИВАНИЯ
         col1, col2 = st.columns(2)
@@ -566,29 +759,23 @@ if submitted:
         
         with col2:
             st.download_button(
-                "🌐 Скачать HTML+диаграммы",
+                "🌐 Скачать HTML с диаграммами",
                 html_buffer,
                 "Отчёт_о_тестировании.html",
                 "text/html",
                 use_container_width=True
             )
         
-        # ИНСТРУКЦИЯ ПО КОНВЕРТАЦИИ В PDF
+        # ИНСТРУКЦИЯ
         st.markdown("""
-        <div style="background-color: #3f403f; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #81c784;">
-            <h4>🖨️ Как получить PDF:</h4>
+        <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #81c784;">
+            <h4>🖨️ Как получить профессиональный PDF:</h4>
             <ol>
-                <li>Скачайте файл <strong>HTML</strong> (кнопка справа)</li>
-                <li>Откройте его в <strong>Chrome</strong> или <strong>любом другом браузере</strong></li>
-                <li>Нажмите <kbd>Ctrl+P</kbd> → выберите «Сохранить как PDF»</li>
-                <li>Установите:
-                    <ul>
-                        <li>Ориентация: <strong>Книжная</strong></li>
-                        <li>Масштаб: <strong>100%</strong></li>
-                        <li>Поля: <strong>Стандартные</strong></li>
-                    </ul>
-                </li>
-                <li>Нажмите «Сохранить» — получите отчёт с диаграммами и таблицами как в DOCX</li>
+                <li>Скачайте файл <strong>HTML</strong></li>
+                <li>Откройте в <strong>браузере</strong> (Chrome/Edge)</li>
+                <li>Нажмите <kbd>Ctrl+P</kbd> → «Сохранить как PDF»</li>
+                <li>Установите: ориентация «Книжная», масштаб «100%»</li>
+                <li>Сохраните — получите отчёт с диаграммами как в образце</li>
             </ol>
         </div>
         """, unsafe_allow_html=True)
