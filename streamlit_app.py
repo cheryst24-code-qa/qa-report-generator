@@ -564,7 +564,7 @@ def generate_html_report(data, module_data_list, defects_df):
         else:
             html += "<tr><td colspan='4' style='text-align:center'>Нет данных</td></tr>"
         html += "</table>"
-    
+
     # Дефекты
     html += "<h2>4. АНАЛИЗ ДЕФЕКТОВ</h2>"
     html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 15%;">Модуль</th><th>Заголовок</th><th style="width: 20%;">Серьёзность</th><th style="width: 15%;">Статус</th></tr>'
@@ -917,7 +917,7 @@ default_defects = pd.DataFrame([
 
 # === ИНТЕРФЕЙС STREAMLIT (структура как в отчёте из PDF) ===
 st.set_page_config(page_title="Генератор отчёта как в образце", layout="wide")
-st.title("📄 Генератор отчёта о тестировании (образец из PDF)")
+st.title("📄 Генератор отчёта о тестировании")
 
 with st.form("main_form"):
     # === ЗАГОЛОВОК ОТЧЁТА ===
@@ -1111,12 +1111,12 @@ if submitted:
         html_buffer = generate_html_report(data, module_data_list, defects)
         xlsx_buffer = generate_xlsx_single_sheet(data, module_data_list, defects)
         
-        st.success("✅ Отчёт сгенерирован в точном соответствии с образцом!")
+        st.success("✅ Отчёт создан!")
         
         col1, col2, col3 = st.columns(3)
         with col1:
             st.download_button(
-                "📄 DOCX (как в PDF)",
+                "📄 DOCX",
                 docx_buffer,
                 "Отчёт_о_тестировании.docx",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1139,20 +1139,6 @@ if submitted:
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
-        
-        st.markdown("""
-        <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 20px; border-left: 4px solid #4caf50;">
-        <h4>✅ Ключевые исправления для соответствия образцу PDF:</h4>
-        <ul>
-            <li>Раздел «Ограничения тестирования» — нумерованный список (1., 2., 3.) вместо маркированного</li>
-            <li>Формат «Вывод:» и «Рекомендации:» — текст сразу после заголовка без лишних переносов</li>
-            <li>В комментариях к тест-кейсам — точка после ID бага: <code>BUG-SEARCH-001.</code></li>
-            <li>Чистая таблица подписи 3×2 без артефактов форматирования</li>
-            <li>Шрифт Calibri 11pt как в оригинальном документе</li>
-            <li>Точная структура всех 7 разделов как в образце</li>
-        </ul>
-        </div>
-        """, unsafe_allow_html=True)
     
     except Exception as e:
         st.error(f"❌ Ошибка генерации: {str(e)}")
