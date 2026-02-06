@@ -337,10 +337,11 @@ def generate_html_report(data, module_data_list, defects_df):
     <html lang="ru">
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>{data['report_title']}</title>
         <style>
             body {{
-                font-family: 'Calibri Light', Times, serif;
+                font-family: 'Times New Roman', Times, serif;
                 font-size: 12pt;
                 line-height: 1.5;
                 max-width: 800px;
@@ -388,7 +389,7 @@ def generate_html_report(data, module_data_list, defects_df):
             .summary-table td:first-child,
             .context-table td:first-child,
             .signature-table td:first-child {{
-                width: 35%;
+                width: 25%;
                 font-weight: bold;
                 background-color: #f9f9f9;
             }}
@@ -396,7 +397,7 @@ def generate_html_report(data, module_data_list, defects_df):
             .summary-table td:last-child,
             .context-table td:last-child,
             .signature-table td:last-child {{
-                width: 65%;
+                width: 75%;
             }}
             .status-pass {{ color: #2e7d32; font-weight: bold; }}
             .status-fail {{ color: #d32f2f; font-weight: bold; }}
@@ -472,7 +473,7 @@ def generate_html_report(data, module_data_list, defects_df):
             <tr><td>Рекомендация:</td><td>{data['recommendation']}</td></tr>
         </table>
         
-        <!-- Диаграммы -->         
+        <!-- === ИСПРАВЛЕНО: добавлен префикс "data:" для ОБЕИХ диаграмм === -->
         <div class="chart-container">
             <img src="data:image/png;base64,{chart1}" alt="Распределение результатов тест-кейсов" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
             <div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
