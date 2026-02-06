@@ -572,7 +572,7 @@ def generate_html_report(data, module_data_list, defects_df):
     return buffer
 
 def generate_xlsx_single_sheet(data, module_data_list, defects_df):
-    """Генерирует компактный XLSX-отчёт на ОДНОМ листе (рекомендуется для тестировщиков)"""
+    """Генерирует компактный XLSX-отчёт на ОДНОМ листе с едиными ширинами колонок"""
     from io import BytesIO
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -583,12 +583,28 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws = wb.active
     ws.title = "Отчёт о тестировании"  # type: ignore
     
-    # Стили (определяем один раз)
+    # === ЕДИНЫЕ ШИРИНЫ ДЛЯ ВСЕГО ЛИСТА (оптимизировано под все секции) ===
+    # Расчёт основан на анализе контента: модули (18), ID (12), сценарии (38), статусы (13), комментарии (50)
+    COL_WIDTHS = {
+        'A': 18,  # Модуль / Параметр / Метрика
+        'B': 14,  # ID / Значение (короткое)
+        'C': 38,  # Сценарий / Заголовок дефекта / Длинное значение
+        'D': 13,  # Статус / Серьёзность
+        'E': 50,  # Комментарий / Описание
+        'F': 2    # Минимальная ширина для объединённых заголовков (не используется для данных)
+    }
+    
+    # Стили
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     critical_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
     major_fill = PatternFill(start_color="FFA500", end_color="FFA500", fill_type="solid")
     pass_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
     fail_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+    section_fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")
+    context_fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")
+    defects_fill = PatternFill(start_color="7030A0", end_color="7030A0", fill_type="solid")
+    notes_fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")
+    signature_fill = PatternFill(start_color="333333", end_color="333333", fill_type="solid")
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
         top=Side(style='thin'), bottom=Side(style='thin')
@@ -596,50 +612,58 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     
     row = 1
     
-    # === ЗАГОЛОВОК ===
+    # === ЗАГОЛОВОК (объединяем все 6 колонок) ===
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     cell = ws[f'A{row}']  # type: ignore
     cell.value = data["report_title"]
-    cell.font = Font(name='Calibri', size=14, bold=True, color="FFFFFF")  # type: ignore
+    cell.font = Font(name='Calibri', size=16, bold=True, color="FFFFFF")  # type: ignore
     cell.fill = header_fill  # type: ignore
     cell.alignment = Alignment(horizontal="center", vertical="center")  # type: ignore
     row += 2
     
-    # === СВОДКА ===
+    # === СВОДКА (4 колонки: Метрика | Значение | Метрика2 | Значение2) ===
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     ws[f'A{row}'].value = "📊 КЛЮЧЕВЫЕ МЕТРИКИ"  # type: ignore
     ws[f'A{row}'].font = Font(bold=True, size=12, color="FFFFFF")  # type: ignore
-    ws[f'A{row}'].fill = PatternFill(start_color="5B9BD5", end_color="5B9BD5", fill_type="solid")  # type: ignore
+    ws[f'A{row}'].fill = section_fill  # type: ignore
     ws[f'A{row}'].alignment = Alignment(horizontal="center")  # type: ignore
     row += 1
     
+    # Единая структура: 4 колонки (A-D), E-F пустые для выравнивания
     summary_data = [
-        ["Проект", data["project"], "Всего тестов", str(data["total_tc"])],
+        ["Проект", data["project"], "Всего тестов", f"{data['total_tc']}"],
         ["Версия", data["version"], "PASS", f"{data['pass']} ({data['pass']/data['total_tc']*100:.1f}%)"],
         ["Период", data["test_period"], "FAIL", f"{data['fail']} ({data['fail']/data['total_tc']*100:.1f}%)"],
         ["Critical (S1)", str(data["s1"]), "Статус релиза", data["release_status"]],
         ["Major (S2)", str(data["s2"]), "Рекомендация", data["recommendation"]],
     ]
     
-    for summary_row in summary_data:
+    for summary_row in summary_
         for col_idx, value in enumerate(summary_row, start=1):
             cell = ws.cell(row=row, column=col_idx, value=value)  # type: ignore
             cell.border = thin_border  # type: ignore
             if col_idx % 2 == 1:  # Нечётные колонки — метрики
                 cell.font = Font(bold=True)  # type: ignore
+            # Автоматическая подсветка статусов
+            if "НЕ РЕКОМЕНДОВАН" in str(value):
+                cell.fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")  # type: ignore
+                cell.font = Font(color="FFFFFF", bold=True)  # type: ignore
+            elif "РЕКОМЕНДОВАН" in str(value):
+                cell.fill = PatternFill(start_color="00B050", end_color="00B050", fill_type="solid")  # type: ignore
+                cell.font = Font(color="FFFFFF", bold=True)  # type: ignore
         row += 1
     row += 1
     
-    # === КОНТЕКСТ ===
+    # === КОНТЕКСТ (2 колонки: Параметр | Значение) ===
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     ws[f'A{row}'].value = "⚙️ КОНТЕКСТ ТЕСТИРОВАНИЯ"  # type: ignore
     ws[f'A{row}'].font = Font(bold=True, size=12, color="FFFFFF")  # type: ignore
-    ws[f'A{row}'].fill = PatternFill(start_color="70AD47", end_color="70AD47", fill_type="solid")  # type: ignore
+    ws[f'A{row}'].fill = context_fill  # type: ignore
     ws[f'A{row}'].alignment = Alignment(horizontal="center")  # type: ignore
     row += 1
     
     context_data = [
-        ["Устройство / Браузер", data["device_browser"]],
+        ["Устройство", data["device_browser"]],
         ["ОС / Платформа", data["os_platform"]],
         ["Сборка", data["build"]],
         ["Стенд", data["env_url"].strip()],
@@ -649,22 +673,23 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ["Дата формирования", data["report_date"]],
     ]
     
-    for label, value in context_data:
+    for label, value in context_
+        # Используем колонки A (метрика) и C (значение) для лучшего выравнивания с другими секциями
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)  # type: ignore
-        ws.cell(row=row, column=2, value=value).border = thin_border  # type: ignore
         ws.cell(row=row, column=1, value=label).border = thin_border  # type: ignore
+        ws.cell(row=row, column=3, value=value).border = thin_border  # type: ignore
         row += 1
     row += 1
     
-    # === РЕЗУЛЬТАТЫ ТЕСТОВ ===
+    # === РЕЗУЛЬТАТЫ ТЕСТОВ (5 колонок) ===
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     ws[f'A{row}'].value = "✅ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ"  # type: ignore
     ws[f'A{row}'].font = Font(bold=True, size=12, color="FFFFFF")  # type: ignore
-    ws[f'A{row}'].fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")  # type: ignore
+    ws[f'A{row}'].fill = section_fill  # type: ignore
     ws[f'A{row}'].alignment = Alignment(horizontal="center")  # type: ignore
     row += 1
     
-    # Заголовки таблицы тестов
+    # Заголовки таблицы тестов (5 колонок)
     test_headers = ["Модуль", "ID", "Сценарий", "Статус", "Комментарий"]
     for col_idx, header in enumerate(test_headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)  # type: ignore
@@ -695,11 +720,11 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 row += 1
     row += 1
     
-    # === ДЕФЕКТЫ ===
+    # === ДЕФЕКТЫ (5 колонок) ===
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     ws[f'A{row}'].value = "🐞 АНАЛИЗ ДЕФЕКТОВ"  # type: ignore
     ws[f'A{row}'].font = Font(bold=True, size=12, color="FFFFFF")  # type: ignore
-    ws[f'A{row}'].fill = PatternFill(start_color="7030A0", end_color="7030A0", fill_type="solid")  # type: ignore
+    ws[f'A{row}'].fill = defects_fill  # type: ignore
     ws[f'A{row}'].alignment = Alignment(horizontal="center")  # type: ignore
     row += 1
     
@@ -733,6 +758,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.merge_cells(f'A{row}:E{row}')  # type: ignore
         ws[f'A{row}'].value = "Нет зарегистрированных дефектов"  # type: ignore
         ws[f'A{row}'].alignment = Alignment(horizontal="center")  # type: ignore
+        ws[f'A{row}'].border = thin_border  # type: ignore
         row += 1
     row += 1
     
@@ -747,15 +773,16 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.merge_cells(f'A{row}:F{row}')  # type: ignore
         ws[f'A{row}'].value = title  # type: ignore
         ws[f'A{row}'].font = Font(bold=True, size=12, color="FFFFFF")  # type: ignore
-        ws[f'A{row}'].fill = PatternFill(start_color="FFC000", end_color="FFC000", fill_type="solid")  # type: ignore
+        ws[f'A{row}'].fill = notes_fill  # type: ignore
         ws[f'A{row}'].alignment = Alignment(horizontal="center")  # type: ignore
         row += 1
         
         for line in content.split('\n'):
             if line.strip():
-                ws.merge_cells(f'A{row}:F{row}')  # type: ignore
+                ws.merge_cells(f'A{row}:E{row}')  # type: ignore
                 ws[f'A{row}'].value = f"• {line.strip()}"  # type: ignore
                 ws[f'A{row}'].border = thin_border  # type: ignore
+                ws[f'A{row}'].alignment = Alignment(wrap_text=True, vertical="top")  # type: ignore
                 row += 1
         row += 1
     
@@ -763,7 +790,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
     ws[f'A{row}'].value = "Подпись"  # type: ignore
     ws[f'A{row}'].font = Font(bold=True, size=12, color="FFFFFF")  # type: ignore
-    ws[f'A{row}'].fill = PatternFill(start_color="333333", end_color="333333", fill_type="solid")  # type: ignore
+    ws[f'A{row}'].fill = signature_fill  # type: ignore
     ws[f'A{row}'].alignment = Alignment(horizontal="center")  # type: ignore
     row += 1
     
@@ -773,52 +800,44 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ["Дата", data["signature_date"]],
     ]
     
-    for label, value in signature_data:
+    for label, value in signature_
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)  # type: ignore
-        ws.cell(row=row, column=2, value=value).border = thin_border  # type: ignore
         ws.cell(row=row, column=1, value=label).border = thin_border  # type: ignore
+        ws.cell(row=row, column=3, value=value).border = thin_border  # type: ignore
         row += 1
     
-    # === ДАННЫЕ ДЛЯ ДИАГРАММ (внутри функции!) ===
+    # === ДАННЫЕ ДЛЯ ДИАГРАММ ===
     row += 2
     ws.merge_cells(f'A{row}:F{row}')  # type: ignore
-    ws[f'A{row}'].value = "📈 ДАННЫЕ ДЛЯ ДИАГРАММ"  # type: ignore
-    ws[f'A{row}'].font = Font(italic=True, color="808080")  # type: ignore
+    ws[f'A{row}'].value = "📈 ДАННЫЕ ДЛЯ ДИАГРАММ (выделите → Вставка → Диаграмма)"  # type: ignore
+    ws[f'A{row}'].font = Font(italic=True, bold=True, color="1E90FF")  # type: ignore
+    ws[f'A{row}'].alignment = Alignment(horizontal="center")  # type: ignore
     row += 1
     
-    # Данные для диаграммы распределения тестов
+    # PASS/FAIL
     ws.cell(row=row, column=1, value="Тип").font = Font(bold=True)  # type: ignore
     ws.cell(row=row, column=2, value="Количество").font = Font(bold=True)  # type: ignore
     row += 1
     ws.cell(row=row, column=1, value="PASS").fill = pass_fill  # type: ignore
-    ws.cell(row=row, column=2, value=data['pass'])  # type: ignore
+    ws.cell(row=row, column=2, value=data['pass']).border = thin_border  # type: ignore
     row += 1
     ws.cell(row=row, column=1, value="FAIL").fill = fail_fill  # type: ignore
-    ws.cell(row=row, column=2, value=data['fail'])  # type: ignore
+    ws.cell(row=row, column=2, value=data['fail']).border = thin_border  # type: ignore
     row += 2
     
-    # Данные для диаграммы дефектов
+    # Дефекты
     ws.cell(row=row, column=1, value="Серьёзность").font = Font(bold=True)  # type: ignore
     ws.cell(row=row, column=2, value="Количество").font = Font(bold=True)  # type: ignore
     row += 1
     ws.cell(row=row, column=1, value="Critical (S1)").fill = critical_fill  # type: ignore
-    ws.cell(row=row, column=2, value=data['s1'])  # type: ignore
+    ws.cell(row=row, column=2, value=data['s1']).border = thin_border  # type: ignore
     row += 1
     ws.cell(row=row, column=1, value="Major (S2)").fill = major_fill  # type: ignore
-    ws.cell(row=row, column=2, value=data['s2'])  # type: ignore
+    ws.cell(row=row, column=2, value=data['s2']).border = thin_border  # type: ignore
     
-    # Простая инструкция в ячейке
-    row += 2
-    ws.merge_cells(f'A{row}:F{row}')  # type: ignore
-    ws[f'A{row}'].value = "💡 Совет: выделите диапазон с данными → Вставка → Диаграмма"  # type: ignore
-    ws[f'A{row}'].font = Font(italic=True, color="1E90FF")  # type: ignore
-    ws[f'A{row}'].alignment = Alignment(wrap_text=True)  # type: ignore
-    
-    # Автоподбор ширины колонок
-    for col in range(1, 6):
-        ws.column_dimensions[get_column_letter(col)].width = {  # type: ignore
-            1: 18, 2: 12, 3: 35, 4: 12, 5: 50
-        }.get(col, 20)
+    # === УСТАНОВКА ЕДИНЫХ ШИРИН КОЛОНОК ДЛЯ ВСЕГО ЛИСТА ===
+    for col_letter, width in COL_WIDTHS.items():
+        ws.column_dimensions[col_letter].width = width  # type: ignore
     
     wb.save(output)
     output.seek(0)
