@@ -79,6 +79,7 @@ def clear_table_borders(table):
             tc.clear()
 
 def generate_docx(data, module_data_list, defects_df):
+    """Генерирует строго деловой DOCX-отчет"""
     doc = Document()
     style = doc.styles['Normal']
     font = style.font
@@ -91,11 +92,10 @@ def generate_docx(data, module_data_list, defects_df):
     title_font = title.runs[0].font
     title_font.size = Pt(16)
     title_font.bold = True
-    title_font.color.rgb = RGBColor(0, 0, 0)
 
-    # === ИНФОРМАЦИОННЫЕ ПОЛЯ (в виде таблицы без границ) ===
+    # === ИНФОРМАЦИОННЫЕ ПОЛЯ (в виде таблицы с границами) ===
     info_table = doc.add_table(rows=6, cols=2)
-    clear_table_borders(info_table)  # <<< Убираем границы
+    info_table.style = 'Table Grid'
     # Устанавливаем ширину колонок
     for i in range(2):
         for row in info_table.rows:
@@ -116,21 +116,18 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
             run.font.bold = True
-            run.font.color.rgb = RGBColor(0, 51, 102)  # Темно-синий цвет меток
         
         cell2 = info_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # === КРАТКОЕ РЕЗЮМЕ (в виде таблицы без границ) ===
+    # === КРАТКОЕ РЕЗЮМЕ (в виде таблицы с границами) ===
     doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
     
     summary_table = doc.add_table(rows=8, cols=2)
-    clear_table_borders(summary_table)  # <<< Убираем границы
+    summary_table.style = 'Table Grid'
     
     total = data['total_tc']
     pass_pct = data['pass'] / total * 100 if total > 0 else 0
@@ -153,13 +150,10 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
             run.font.bold = True
-            run.font.color.rgb = RGBColor(0, 51, 102)
         
         cell2 = summary_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
@@ -183,10 +177,10 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_picture(plot_to_buffer(), width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # === КОНТЕКСТ ТЕСТИРОВАНИЯ (в виде таблицы без границ) ===
+    # === КОНТЕКСТ ТЕСТИРОВАНИЯ (в виде таблицы с границами) ===
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
     context_table = doc.add_table(rows=6, cols=2)
-    clear_table_borders(context_table)  # <<< Убираем границы
+    context_table.style = 'Table Grid'
     
     context_fields = [
         ('Устройство / Браузер:', data['device_browser']),
@@ -203,13 +197,10 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
             run.font.bold = True
-            run.font.color.rgb = RGBColor(0, 51, 102)
         
         cell2 = context_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
@@ -232,8 +223,7 @@ def generate_docx(data, module_data_list, defects_df):
     for line in data['limitations'].split('\n'):
         if line.strip():
             p = doc.add_paragraph()
-            p.add_run(f"• {line.strip()}").italic = True
-            p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+            p.add_run(f"• {line.strip()}")
             p.paragraph_format.space_after = Pt(2)
 
     # === ВЫВОД И РЕКОМЕНДАЦИИ ===
@@ -244,14 +234,13 @@ def generate_docx(data, module_data_list, defects_df):
     for line in data['recommendations_detailed'].split('\n'):
         if line.strip():
             p = doc.add_paragraph()
-            p.add_run(f"• {line.strip()}").italic = True
-            p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+            p.add_run(f"• {line.strip()}")
             p.paragraph_format.space_after = Pt(2)
 
-    # === ПОДПИСЬ (в виде таблицы без границ) ===
+    # === ПОДПИСЬ (в виде таблицы с границами) ===
     doc.add_heading('7. ПОДПИСЬ', 1)
     signature_table = doc.add_table(rows=3, cols=2)
-    clear_table_borders(signature_table)  # <<< Убираем границы
+    signature_table.style = 'Table Grid'
     signature_fields = [
         ('Роль:', data['role']),
         ('ФИО:', data['fullname']),
@@ -264,13 +253,10 @@ def generate_docx(data, module_data_list, defects_df):
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
             run.font.bold = True
-            run.font.color.rgb = RGBColor(0, 51, 102)
         
         cell2 = signature_table.cell(i, 1)
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        for run in cell2.paragraphs[0].runs:
-            run.font.color.rgb = RGBColor(0, 0, 0)
 
     buffer = io.BytesIO()
     doc.save(buffer)
