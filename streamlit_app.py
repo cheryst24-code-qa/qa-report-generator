@@ -4,7 +4,8 @@ import pandas as pd
 from docx import Document
 from docx.shared import Inches, Pt
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-from docx.oxml.shared import OxmlElement, qn
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn 
 import matplotlib
 matplotlib.use('Agg')  # Критически важно для работы в Streamlit Cloud
 import matplotlib.pyplot as plt
@@ -71,10 +72,9 @@ def add_table_from_df(doc, df):
 def generate_docx(data, module_data_list, defects_df):
     """Генерирует строго деловой DOCX-отчёт"""
     doc = Document()
-    style = doc.styles['Normal']
-    font = style.font
-    font.name = 'Calibri Light'
-    font.size = Pt(12)
+    # Исправление предупреждения BaseStyle.font: прямое присвоение
+    doc.styles['Normal'].font.name = 'Calibri Light' # type: ignore
+    doc.styles['Normal'].font.size = Pt(12) # type: ignore
     
     # ЗАГОЛОВОК
     title = doc.add_heading(data["report_title"], 0)
@@ -83,16 +83,17 @@ def generate_docx(data, module_data_list, defects_df):
     title_font.size = Pt(16)
     title_font.bold = True
 
+    # ЕДИНЫЙ РАСЧЁТ ШИРИНЫ ДЛЯ ВСЕХ 2-КОЛОНОЧНЫХ ТАБЛИЦ (в твипсах)
+    total_width_twips = Inches(6.5).twips
+    first_col_width_twips = int(total_width_twips * 0.25)
+    second_col_width_twips = int(total_width_twips * 0.75)
+
     # ИНФОРМАЦИОННЫЕ ПОЛЯ
     info_table = doc.add_table(rows=6, cols=2)
     info_table.style = 'Table Grid'
-    total_width = Inches(6.5)
-    first_col_width = total_width * 0.25
-    second_col_width = total_width * 0.75
-    
-    for row in info_table.rows:
-        row.cells[0].width = first_col_width
-        row.cells[1].width = second_col_width
+    # УСТАНАВЛИВАЕМ ШИРИНУ ТОЛЬКО ЧЕРЕЗ КОЛОНКИ (НЕ ЯЧЕЙКИ!)
+    set_col_width(info_table.columns[0], first_col_width_twips)
+    set_col_width(info_table.columns[1], second_col_width_twips)
     
     fields = [
         ('Проект:', data["project"]),
@@ -121,10 +122,8 @@ def generate_docx(data, module_data_list, defects_df):
     
     summary_table = doc.add_table(rows=8, cols=2)
     summary_table.style = 'Table Grid'
-    
-    for row in summary_table.rows:
-        row.cells[0].width = first_col_width
-        row.cells[1].width = second_col_width
+    set_col_width(summary_table.columns[0], first_col_width_twips)
+    set_col_width(summary_table.columns[1], second_col_width_twips)
     
     total = data['total_tc']
     pass_pct = data['pass'] / total * 100 if total > 0 else 0
@@ -188,10 +187,8 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
     context_table = doc.add_table(rows=6, cols=2)
     context_table.style = 'Table Grid'
-    
-    for row in context_table.rows:
-        row.cells[0].width = first_col_width
-        row.cells[1].width = second_col_width
+    set_col_width(context_table.columns[0], first_col_width_twips)
+    set_col_width(context_table.columns[1], second_col_width_twips)
     
     context_fields = [
         ('Устройство / Браузер:', data['device_browser']),
@@ -249,14 +246,12 @@ def generate_docx(data, module_data_list, defects_df):
             p.add_run(f"• {line.strip()}")
             p.paragraph_format.space_after = Pt(2)
 
-    # ПОДПИСЬ
+    # ПОДПИСЬ (ИСПРАВЛЕНА ОПЕЧАТКА: signature_table вместо info_table)
     doc.add_heading('7. ПОДПИСЬ', 1)
     signature_table = doc.add_table(rows=3, cols=2)
     signature_table.style = 'Table Grid'
-    
-    for row in signature_table.rows:
-        row.cells[0].width = first_col_width
-        row.cells[1].width = second_col_width
+    set_col_width(signature_table.columns[0], first_col_width_twips)
+    set_col_width(signature_table.columns[1], second_col_width_twips)
     
     signature_fields = [
         ('Роль:', data['role']),
