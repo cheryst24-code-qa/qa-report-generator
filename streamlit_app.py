@@ -2,28 +2,13 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Pt
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml.shared import OxmlElement, qn
 import matplotlib.pyplot as plt
 import io
-import tempfile
-import os
+import base64
 import traceback
-
-# === ВАЖНО: В ОБЛАКЕ (Streamlit Community Cloud) конвертация в PDF НЕДОСТУПНА ===
-# Причина: для работы docx2pdf требуется установленный LibreOffice/MS Word
-# Решение: 
-#   • Локально: установите `pip install docx2pdf` + LibreOffice
-#   • В облаке: используйте HTML-экспорт → сохраните как PDF через браузер
-
-# === ИМПОРТЫ ДЛЯ КОНВЕРТАЦИИ DOCX В PDF (ТОЛЬКО ДЛЯ ЛОКАЛЬНОГО ЗАПУСКА) ===
-# Раскомментируйте строки ниже ТОЛЬКО при локальном запуске с установленным LibreOffice
-# try:
-#     from docx2pdf import convert
-#     PDF_CONVERSION_AVAILABLE = True
-# except ImportError:
-#     PDF_CONVERSION_AVAILABLE = False
 
 def set_col_width(col, width_twips):
     """Устанавливает ширину колонки в таблице DOCX"""
@@ -44,7 +29,7 @@ def plot_to_buffer():
 
 def add_table_from_df(doc, df):
     """Создаёт таблицу с фиксированной шириной и границами"""
-    # === ИСПРАВЛЕНИЕ: Проверка на пустой список колонок ===
+    # ИСПРАВЛЕНИЕ: Проверка на пустой список колонок
     if len(df.columns) == 0:
         doc.add_paragraph("Нет данных для отображения")
         doc.add_paragraph().paragraph_format.space_after = Pt(6)
@@ -98,14 +83,14 @@ def generate_docx(data, module_data_list, defects_df):
     font.name = 'Times New Roman'
     font.size = Pt(12)
     
-    # === ЗАГОЛОВОК ОТЧЕТА ===
+    # ЗАГОЛОВОК
     title = doc.add_heading(data["report_title"], 0)
     title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
     title_font = title.runs[0].font
     title_font.size = Pt(16)
     title_font.bold = True
 
-    # === ИНФОРМАЦИОННЫЕ ПОЛЯ ===
+    # ИНФОРМАЦИОННЫЕ ПОЛЯ
     info_table = doc.add_table(rows=6, cols=2)
     info_table.style = 'Table Grid'
     total_width = Inches(6.5)
@@ -138,7 +123,7 @@ def generate_docx(data, module_data_list, defects_df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # === КРАТКОЕ РЕЗЮМЕ ===
+    # КРАТКОЕ РЕЗЮМЕ
     doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
     
     summary_table = doc.add_table(rows=8, cols=2)
@@ -176,7 +161,7 @@ def generate_docx(data, module_data_list, defects_df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # === ДИАГРАММЫ ===
+    # ДИАГРАММЫ
     plt.figure(figsize=(5, 4))
     plt.pie([data['pass'], data['fail']], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
             colors=['#4CAF50', '#F44336'], startangle=90)
@@ -204,7 +189,7 @@ def generate_docx(data, module_data_list, defects_df):
     doc.add_picture(buf, width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # === КОНТЕКСТ ТЕСТИРОВАНИЯ ===
+    # КОНТЕКСТ ТЕСТИРОВАНИЯ
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
     context_table = doc.add_table(rows=6, cols=2)
     context_table.style = 'Table Grid'
@@ -235,7 +220,7 @@ def generate_docx(data, module_data_list, defects_df):
 
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-    # === РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ ===
+    # РЕЗУЛЬТАТЫ ПО МОДУЛЯМ
     doc.add_heading('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', 1)
     for idx, module_info in enumerate(module_data_list):
         title = module_info['title']
@@ -243,14 +228,14 @@ def generate_docx(data, module_data_list, defects_df):
         doc.add_heading(f'3.{idx+1}. {title}', 2)
         add_table_from_df(doc, df)
 
-    # === АНАЛИЗ ДЕФЕКТОВ ===
+    # АНАЛИЗ ДЕФЕКТОВ
     doc.add_heading('4. АНАЛИЗ ДЕФЕКТОВ', 1)
     add_table_from_df(doc, defects_df)
 
     doc.add_paragraph('Последствия:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['consequences']).paragraph_format.space_after = Pt(6)
 
-    # === ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ ===
+    # ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ
     doc.add_heading('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', 1)
     for line in data['limitations'].split('\n'):
         if line.strip():
@@ -258,7 +243,7 @@ def generate_docx(data, module_data_list, defects_df):
             p.add_run(f"• {line.strip()}")
             p.paragraph_format.space_after = Pt(2)
 
-    # === ВЫВОД И РЕКОМЕНДАЦИИ ===
+    # ВЫВОД И РЕКОМЕНДАЦИИ
     doc.add_heading('6. ВЫВОД И РЕКОМЕНДАЦИИ', 1)
     doc.add_paragraph('Вывод:').paragraph_format.space_after = Pt(6)
     doc.add_paragraph(data['conclusion']).paragraph_format.space_after = Pt(6)
@@ -269,7 +254,7 @@ def generate_docx(data, module_data_list, defects_df):
             p.add_run(f"• {line.strip()}")
             p.paragraph_format.space_after = Pt(2)
 
-    # === ПОДПИСЬ ===
+    # ПОДПИСЬ
     doc.add_heading('7. ПОДПИСЬ', 1)
     signature_table = doc.add_table(rows=3, cols=2)
     signature_table.style = 'Table Grid'
@@ -300,9 +285,53 @@ def generate_docx(data, module_data_list, defects_df):
     buffer.seek(0)
     return buffer
 
+def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
+    """Генерирует диаграммы и возвращает их как base64 строки"""
+    # Диаграмма 1: Распределение результатов
+    plt.figure(figsize=(6, 4.5))
+    plt.pie([pass_count, fail_count], labels=['PASS', 'FAIL'], autopct='%1.1f%%',
+            colors=['#4CAF50', '#F44336'], startangle=90, textprops={'fontsize': 11})
+    plt.title('Рис. 1. Распределение результатов тест-кейсов', fontsize=12, pad=15)
+    buf1 = io.BytesIO()
+    plt.savefig(buf1, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    buf1.seek(0)
+    plt.close()
+    
+    # Диаграмма 2: Дефекты по серьёзности
+    plt.figure(figsize=(6, 4.5))
+    bars = plt.bar(['Critical (S1)', 'Major (S2)'], [s1_count, s2_count],
+                   color=['#F44336', '#FF9800'], width=0.5)
+    plt.title('Рис. 2. Дефекты по уровню серьёзности', fontsize=12, pad=15)
+    plt.ylabel('Количество', fontsize=11)
+    plt.ylim(0, max(s1_count, s2_count, 1) * 1.3)
+    for bar in bars:
+        h = bar.get_height()
+        if h > 0:
+            plt.text(bar.get_x() + bar.get_width()/2, h + 0.05, str(int(h)), 
+                    ha='center', va='bottom', fontsize=11, fontweight='bold')
+    plt.grid(axis='y', alpha=0.3, linestyle='--')
+    buf2 = io.BytesIO()
+    plt.savefig(buf2, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    buf2.seek(0)
+    plt.close()
+    
+    # Конвертация в base64
+    chart1_base64 = base64.b64encode(buf1.read()).decode('utf-8')
+    chart2_base64 = base64.b64encode(buf2.read()).decode('utf-8')
+    
+    return chart1_base64, chart2_base64
+
 def generate_html_report(data, module_data_list, defects_df):
-    """Генерирует HTML-версию отчёта для удобного сохранения как PDF через браузер"""
-    # Создаём базовый HTML с инлайновыми стилями для корректного отображения при печати
+    """Генерирует HTML-версию отчёта с диаграммами и профессиональным форматированием"""
+    # Генерация диаграмм
+    chart1, chart2 = generate_chart_base64(data['pass'], data['fail'], data['s1'], data['s2'])
+    
+    # Расчёт процентов
+    total = data['total_tc']
+    pass_pct = data['pass'] / total * 100 if total > 0 else 0
+    fail_pct = 100 - pass_pct
+    
+    # Создание HTML с профессиональным форматированием
     html = f"""
     <!DOCTYPE html>
     <html lang="ru">
@@ -310,63 +339,166 @@ def generate_html_report(data, module_data_list, defects_df):
         <meta charset="UTF-8">
         <title>{data['report_title']}</title>
         <style>
-            body {{ font-family: 'Times New Roman', Times, serif; font-size: 12pt; max-width: 800px; margin: 0 auto; padding: 20px; }}
-            h1 {{ text-align: center; font-size: 16pt; font-weight: bold; margin-bottom: 20px; }}
-            h2 {{ font-size: 14pt; margin-top: 20px; border-bottom: 1px solid #000; padding-bottom: 5px; }}
-            h3 {{ font-size: 13pt; margin-top: 15px; }}
-            table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
-            th, td {{ border: 1px solid #000; padding: 6px; text-align: left; vertical-align: top; }}
-            th {{ background-color: #f2f2f2; font-weight: bold; }}
-            .signature-table td:first-child {{ font-weight: bold; width: 25%; }}
-            .risk {{ color: #d32f2f; font-weight: bold; }}
+            body {{
+                font-family: 'Times New Roman', Times, serif;
+                font-size: 12pt;
+                line-height: 1.5;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                color: #000;
+            }}
+            h1 {{
+                text-align: center;
+                font-size: 16pt;
+                font-weight: bold;
+                margin-bottom: 25px;
+                margin-top: 0;
+            }}
+            h2 {{
+                font-size: 14pt;
+                margin-top: 25px;
+                margin-bottom: 12px;
+                padding-bottom: 4px;
+                border-bottom: 2px solid #000;
+            }}
+            h3 {{
+                font-size: 13pt;
+                margin-top: 20px;
+                margin-bottom: 10px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 12px 0 18px 0;
+                page-break-inside: avoid;
+            }}
+            th, td {{
+                border: 1px solid #000;
+                padding: 8px 10px;
+                text-align: left;
+                vertical-align: top;
+            }}
+            th {{
+                background-color: #f5f5f5;
+                font-weight: bold;
+            }}
+            /* Фиксированная ширина колонок как в DOCX (25%/75%) */
+            .info-table td:first-child,
+            .summary-table td:first-child,
+            .context-table td:first-child,
+            .signature-table td:first-child {{
+                width: 25%;
+                font-weight: bold;
+                background-color: #f9f9f9;
+            }}
+            .info-table td:last-child,
+            .summary-table td:last-child,
+            .context-table td:last-child,
+            .signature-table td:last-child {{
+                width: 75%;
+            }}
             .status-pass {{ color: #2e7d32; font-weight: bold; }}
             .status-fail {{ color: #d32f2f; font-weight: bold; }}
+            .risk {{ color: #d32f2f; font-weight: bold; }}
+            .chart-container {{
+                text-align: center;
+                margin: 25px 0;
+                page-break-inside: avoid;
+            }}
+            .chart-title {{
+                font-weight: bold;
+                margin-top: 8px;
+                font-size: 11pt;
+            }}
+            ul {{
+                padding-left: 20px;
+                margin: 10px 0;
+            }}
+            li {{
+                margin-bottom: 5px;
+            }}
+            .no-print {{
+                display: none;
+            }}
             @media print {{
-                body {{ padding: 0; }}
-                .no-print {{ display: none; }}
+                body {{
+                    padding: 15px;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                }}
+                .chart-container img {{
+                    max-width: 100% !important;
+                    height: auto !important;
+                }}
+                .no-print {{
+                    display: none !important;
+                }}
+                table {{
+                    page-break-inside: avoid;
+                }}
+                h2, h3 {{
+                    page-break-after: avoid;
+                }}
+            }}
+            @page {{
+                size: A4;
+                margin: 15mm;
             }}
         </style>
     </head>
     <body>
         <h1>{data['report_title']}</h1>
         
-        <!-- Информационная таблица -->
-        <table>
-            <tr><th>Проект:</th><td>{data['project']}</td></tr>
-            <tr><th>Тип приложения:</th><td>{data['app_type']}</td></tr>
-            <tr><th>Версия приложения:</th><td>{data['version']}</td></tr>
-            <tr><th>Период тестирования:</th><td>{data['test_period']}</td></tr>
-            <tr><th>Дата формирования отчёта:</th><td>{data['report_date']}</td></tr>
-            <tr><th>Тест-инженер:</th><td>{data['engineer']}</td></tr>
+        <!-- Информационная таблица (25%/75%) -->
+        <table class="info-table">
+            <tr><td>Проект:</td><td>{data['project']}</td></tr>
+            <tr><td>Тип приложения:</td><td>{data['app_type']}</td></tr>
+            <tr><td>Версия приложения:</td><td>{data['version']}</td></tr>
+            <tr><td>Период тестирования:</td><td>{data['test_period']}</td></tr>
+            <tr><td>Дата формирования отчёта:</td><td>{data['report_date']}</td></tr>
+            <tr><td>Тест-инженер:</td><td>{data['engineer']}</td></tr>
         </table>
         
         <h2>1. КРАТКОЕ РЕЗЮМЕ</h2>
-        <table>
-            <tr><th>Статус релиза:</th><td>{data['release_status']}</td></tr>
-            <tr><th>Критические дефекты (S1):</th><td>{data['s1']}</td></tr>
-            <tr><th>Мажорные дефекты (S2):</th><td>{data['s2']}</td></tr>
-            <tr><th>Всего тест-кейсов:</th><td>{data['total_tc']}</td></tr>
-            <tr><th>Успешно (Pass):</th><td class="status-pass">{data['pass']} ({data['pass']/data['total_tc']*100:.1f}%)</td></tr>
-            <tr><th>Упали (Fail):</th><td class="status-fail">{data['fail']} ({data['fail']/data['total_tc']*100:.1f}%)</td></tr>
-            <tr><th>Основной риск:</th><td class="risk">{data['risk']}</td></tr>
-            <tr><th>Рекомендация:</th><td>{data['recommendation']}</td></tr>
+        <table class="summary-table">
+            <tr><td>Статус релиза:</td><td>{data['release_status']}</td></tr>
+            <tr><td>Критические дефекты (S1):</td><td>{data['s1']}</td></tr>
+            <tr><td>Мажорные дефекты (S2):</td><td>{data['s2']}</td></tr>
+            <tr><td>Всего тест-кейсов:</td><td>{data['total_tc']}</td></tr>
+            <tr><td>Успешно (Pass):</td><td class="status-pass">{data['pass']} ({pass_pct:.1f}%)</td></tr>
+            <tr><td>Упали (Fail):</td><td class="status-fail">{data['fail']} ({fail_pct:.1f}%)</td></tr>
+            <tr><td>Основной риск:</td><td class="risk">{data['risk']}</td></tr>
+            <tr><td>Рекомендация:</td><td>{data['recommendation']}</td></tr>
         </table>
         
+        <!-- Диаграммы -->
+        <div class="chart-container">
+            <img src="data:image/png;base64,{chart1}" alt="Распределение результатов тест-кейсов" style="max-width: 100%; height: auto;">
+            <div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
+        </div>
+        
+        <div class="chart-container">
+            <img src="data:image/png;base64,{chart2}" alt="Дефекты по уровню серьёзности" style="max-width: 100%; height: auto;">
+            <div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
+        </div>
+        
         <h2>2. КОНТЕКСТ ТЕСТИРОВАНИЯ</h2>
-        <table>
-            <tr><th>Устройство / Браузер:</th><td>{data['device_browser']}</td></tr>
-            <tr><th>ОС / Платформа:</th><td>{data['os_platform']}</td></tr>
-            <tr><th>Сборка / Версия:</th><td>{data['build']}</td></tr>
-            <tr><th>Стенд:</th><td>Тестовое окружение (адрес: {data['env_url']})</td></tr>
-            <tr><th>Инструменты:</th><td>{data['tools']}</td></tr>
-            <tr><th>Методология:</th><td>{data['methodology']}</td></tr>
+        <table class="context-table">
+            <tr><td>Устройство / Браузер:</td><td>{data['device_browser']}</td></tr>
+            <tr><td>ОС / Платформа:</td><td>{data['os_platform']}</td></tr>
+            <tr><td>Сборка / Версия:</td><td>{data['build']}</td></tr>
+            <tr><td>Стенд:</td><td>Тестовое окружение (адрес: {data['env_url']})</td></tr>
+            <tr><td>Инструменты:</td><td>{data['tools']}</td></tr>
+            <tr><td>Методология:</td><td>{data['methodology']}</td></tr>
         </table>
     """
     
     # Результаты по модулям
     html += "<h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>"
     for idx, module_info in enumerate(module_data_list):
-        html += f"<h3>3.{idx+1}. {module_info['title']}</h3><table><tr><th>ID</th><th>Сценарий</th><th>Статус</th><th>Комментарий</th></tr>"
+        html += f"<h3>3.{idx+1}. {module_info['title']}</h3>"
+        html += '<table><tr><th style="width: 15%;">ID</th><th>Сценарий</th><th style="width: 12%;">Статус</th><th>Комментарий</th></tr>'
         df = module_info['df']
         if not df.empty:
             for _, row in df.iterrows():
@@ -377,7 +509,8 @@ def generate_html_report(data, module_data_list, defects_df):
         html += "</table>"
     
     # Анализ дефектов
-    html += "<h2>4. АНАЛИЗ ДЕФЕКТОВ</h2><table><tr><th>ID</th><th>Модуль</th><th>Заголовок</th><th>Серьёзность</th><th>Статус</th></tr>"
+    html += "<h2>4. АНАЛИЗ ДЕФЕКТОВ</h2>"
+    html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 15%;">Модуль</th><th>Заголовок</th><th style="width: 20%;">Серьёзность</th><th style="width: 15%;">Статус</th></tr>'
     if not defects_df.empty:
         for _, row in defects_df.iterrows():
             html += f"<tr><td>{row[0]}</td><td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td><td>{row[4]}</td></tr>"
@@ -409,20 +542,21 @@ def generate_html_report(data, module_data_list, defects_df):
     html += f"""
         <h2>7. ПОДПИСЬ</h2>
         <table class="signature-table">
-            <tr><th>Роль:</th><td>{data['role']}</td></tr>
-            <tr><th>ФИО:</th><td>{data['fullname']}</td></tr>
-            <tr><th>Дата:</th><td>{data['signature_date']}</td></tr>
+            <tr><td>Роль:</td><td>{data['role']}</td></tr>
+            <tr><td>ФИО:</td><td>{data['fullname']}</td></tr>
+            <tr><td>Дата:</td><td>{data['signature_date']}</td></tr>
         </table>
         
-        <div class="no-print" style="margin-top: 30px; padding: 15px; background-color: #e3f2fd; border-radius: 5px;">
-            <h3>💡 Как сохранить отчёт как PDF:</h3>
+        <div class="no-print" style="margin-top: 30px; padding: 15px; background-color: #e3f2fd; border-radius: 5px; border: 1px solid #90caf9;">
+            <h3 style="margin-top: 0;">💡 Как сохранить отчёт как PDF:</h3>
             <ol>
                 <li>Нажмите <strong>Ctrl+P</strong> (Windows) или <strong>Cmd+P</strong> (Mac)</li>
                 <li>В настройках печати выберите «Сохранить как PDF»</li>
+                <li>Убедитесь, что выбрана ориентация «Книжная» и масштаб «100%»</li>
                 <li>Нажмите «Сохранить»</li>
             </ol>
             <p style="margin-top: 10px; font-style: italic;">
-                Этот HTML-отчёт оптимизирован для печати. Все стили и таблицы будут корректно отображены в PDF.
+                Все диаграммы и таблицы с фиксированной шириной колонок будут корректно отображены в PDF.
             </p>
         </div>
     </body>
@@ -471,14 +605,11 @@ default_defects = pd.DataFrame([
 st.set_page_config(page_title="Универсальный генератор QA-отчёта", layout="wide")
 st.title("📄 Универсальный генератор отчёта о тестировании")
 
-# === ВАЖНОЕ УВЕДОМЛЕНИЕ О PDF ===
 st.info("""
-💡 **Как получить PDF-версию отчёта:**
-1. Скачайте отчёт в формате **HTML** (кнопка ниже)
-2. Откройте файл в браузере (Chrome, Edge, Firefox)
-3. Нажмите **Ctrl+P** → выберите «Сохранить как PDF» → Сохранить
-
-*Это самый надёжный способ получить качественный PDF без установки дополнительных программ.*
+✨ **Отличие от обычного HTML-отчёта:**
+- Добавлены профессиональные диаграммы (как в DOCX)
+- Фиксированная ширина колонок в таблицах (25%/75%) — как в деловом документе
+- Оптимизация для печати: при сохранении как PDF через браузер получите идентичный внешний вид
 """)
 
 # === ФОРМА ВВОДА ===
@@ -515,7 +646,7 @@ with st.form("main_form"):
         os_platform = st.text_input("ОС / Платформа", "Android 15")
         build = st.text_input("Сборка", "lemanna-pro_241006.001.apk")
     with col4:
-        env_url = st.text_input("URL стенда", "https://test.lemanna.pro")  # Исправлено: убраны лишние пробелы
+        env_url = st.text_input("URL стенда", "https://test.lemanna.pro")
         tools = st.text_input("Инструменты", "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)")
         methodology = st.text_input("Методология", "Ручное функциональное тестирование + проверка безопасности")
 
@@ -548,10 +679,10 @@ with st.form("main_form"):
     fullname = st.text_input("ФИО", "Черкасов Игорь")
     signature_date = st.text_input("Дата", "30.11.2025")
 
-    submitted = st.form_submit_button("📥 Создать отчёт")
+    submitted = st.form_submit_button("📥 Создать отчёт", type="primary")
 
 if submitted:
-    # === БАЗОВАЯ ВАЛИДАЦИЯ ДАННЫХ ===
+    # БАЗОВАЯ ВАЛИДАЦИЯ ДАННЫХ
     validation_errors = []
     
     if pass_tc + fail_tc != total_tc:
@@ -571,7 +702,7 @@ if submitted:
             st.error(error)
         st.stop()
     
-    # === ПОДГОТОВКА ДАННЫХ ===
+    # ПОДГОТОВКА ДАННЫХ
     data = {
         "report_title": report_title,
         "project": project,
@@ -589,7 +720,7 @@ if submitted:
         "device_browser": device_browser,
         "os_platform": os_platform,
         "build": build,
-        "env_url": env_url.strip(),  # Очистка от пробелов
+        "env_url": env_url.strip(),
         "tools": tools,
         "methodology": methodology,
         "risk": risk,
@@ -604,15 +735,13 @@ if submitted:
     }
     
     try:
-        # === ГЕНЕРАЦИЯ DOCX ===
+        # ГЕНЕРАЦИЯ ОТЧЁТОВ
         docx_buffer = generate_docx(data, module_data_list, defects)
-        
-        # === ГЕНЕРАЦИЯ HTML (альтернатива PDF) ===
         html_buffer = generate_html_report(data, module_data_list, defects)
         
-        st.success("✅ Отчёт готов!")
+        st.success("✅ Отчёт готов! Диаграммы и профессиональное форматирование таблиц добавлены.")
         
-        # === КНОПКИ СКАЧИВАНИЯ ===
+        # КНОПКИ СКАЧИВАНИЯ
         col1, col2 = st.columns(2)
         
         with col1:
@@ -627,26 +756,32 @@ if submitted:
         
         with col2:
             st.download_button(
-                "🌐 Скачать HTML (для сохранения как PDF)",
+                "🌐 Скачать HTML+диаграммы",
                 html_buffer,
                 "Отчёт_о_тестировании.html",
                 "text/html",
                 use_container_width=True
             )
         
-        # === ИНСТРУКЦИЯ ПО КОНВЕРТАЦИИ В PDF ===
+        # ИНСТРУКЦИЯ ПО КОНВЕРТАЦИИ В PDF
         st.markdown("""
-        <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 20px;">
-            <h4>🖨️ Как конвертировать HTML в PDF:</h4>
+        <div style="background-color: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 20px; border: 1px solid #81c784;">
+            <h4>🖨️ Как получить профессиональный PDF:</h4>
             <ol>
-                <li>Скачайте файл в формате <strong>HTML</strong> (кнопка справа)</li>
-                <li>Откройте его в браузере Chrome, Edge или Firefox</li>
-                <li>Нажмите <kbd>Ctrl+P</kbd> (Windows) или <kbd>Cmd+P</kbd> (Mac)</li>
-                <li>В настройках печати выберите «Сохранить как PDF»</li>
-                <li>Нажмите «Сохранить» — получите профессиональный PDF-отчёт</li>
+                <li>Скачайте файл <strong>HTML</strong> (кнопка справа)</li>
+                <li>Откройте его в <strong>Chrome</strong> или <strong>Edge</strong></li>
+                <li>Нажмите <kbd>Ctrl+P</kbd> → выберите «Сохранить как PDF»</li>
+                <li>Установите:
+                    <ul>
+                        <li>Ориентация: <strong>Книжная</strong></li>
+                        <li>Масштаб: <strong>100%</strong></li>
+                        <li>Поля: <strong>Стандартные</strong></li>
+                    </ul>
+                </li>
+                <li>Нажмите «Сохранить» — получите отчёт с диаграммами и таблицами как в DOCX</li>
             </ol>
             <p style="margin-top: 10px; font-style: italic; color: #1b5e20;">
-                ✅ Этот метод работает в 100% случаев и не требует установки дополнительных программ
+                ✅ Диаграммы и фиксированная ширина колонок (25%/75%) сохранятся в PDF без изменений
             </p>
         </div>
         """, unsafe_allow_html=True)
