@@ -124,8 +124,9 @@ def add_table_from_df(doc, df, header_text=None):
         # Форматирование заголовков: жирный шрифт, размер 10pt
         for paragraph in hdr_cells[i].paragraphs:
             for run in paragraph.runs:
+                run.font.name = 'Calibri Light'  # Явное указание шрифта
                 run.font.bold = True
-                run.font.size = Pt(10)
+                run.font.size = Pt(13)  # ← ЕДИНЫЙ РАЗМЕР КАК В ДОКУМЕНТЕ
             paragraph.paragraph_format.space_after = Pt(2)
             paragraph.paragraph_format.space_before = Pt(2)
 
@@ -140,7 +141,8 @@ def add_table_from_df(doc, df, header_text=None):
             # Форматирование ячеек данных: обычный шрифт 9pt
             for paragraph in row_cells[i].paragraphs:
                 for run in paragraph.runs:
-                    run.font.size = Pt(9)
+                    run.font.name = 'Calibri Light'  # Явное указание шрифта
+                    run.font.size = Pt(13)  # ← ЕДИНЫЙ РАЗМЕР КАК В ДОКУМЕНТЕ
                 paragraph.paragraph_format.space_after = Pt(2)
                 paragraph.paragraph_format.space_before = Pt(2)
 
