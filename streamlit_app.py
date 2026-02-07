@@ -1,35 +1,88 @@
 # -*- coding: utf-8 -*-
-import streamlit as st
-import pandas as pd
-from docx import Document
-from docx.shared import Inches, Pt
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
+"""
+ГЕНЕРАТОР ТЕСТОВЫХ ОТЧЁТОВ (Streamlit)
+=======================================
+Это веб-приложение создаёт профессиональные отчёты о тестировании в 3 форматах:
+• DOCX (Word) — для отправки заказчику
+• HTML — для просмотра в браузере
+• XLSX (Excel) — для анализа в таблицах
+
+Структура отчёта соответствует корпоративным стандартам:
+1. Заголовок + основная информация
+2. Краткое резюме (метрики, статус релиза)
+3. Диаграммы (визуализация результатов)
+4. Контекст тестирования (окружение, инструменты)
+5. Результаты по модулям (тест-кейсы)
+6. Анализ дефектов
+7. Ограничения, выводы, рекомендации
+8. Подпись тест-инженера
+"""
+
+# ==================== ИМПОРТ БИБЛИОТЕК ====================
+# Библиотеки для веб-интерфейса
+import streamlit as st  # Основная библиотека для создания веб-приложения
+
+# Библиотеки для работы с данными
+import pandas as pd  # Работа с таблицами (DataFrame)
+import io  # Работа с буферами памяти (для скачивания файлов без сохранения на диск)
+import base64  # Кодирование изображений для встраивания в HTML
+import traceback  # Для вывода детальной информации об ошибках
+
+# Библиотеки для генерации DOCX (Word)
+from docx import Document  # Основной класс для создания документа Word
+from docx.shared import Inches, Pt  # Единицы измерения: дюймы и пункты
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT  # Выравнивание текста
+from docx.oxml import OxmlElement  # Работа с низкоуровневым XML документа Word
+from docx.oxml.ns import qn  # Пространства имён XML
+
+# Библиотеки для диаграмм
 import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import io
-import base64
-import traceback
-import openpyxl
-import plotly.graph_objects as go
-import plotly.io as pio
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
+matplotlib.use('Agg')  # Режим без графического интерфейса (обязательно для Streamlit)
+import matplotlib.pyplot as plt  # Основная библиотека для построения графиков
+
+# Библиотеки для генерации XLSX (Excel)
+import openpyxl  # Работа с Excel-файлами
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side  # Стили ячеек
+from openpyxl.utils import get_column_letter  # Преобразование номера колонки в букву (1 → A)
+
+# ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 def set_col_width(col, width_twips):
-    """Устанавливает точную ширину колонки в таблице Word"""
+    """
+    Устанавливает ТОЧНУЮ ширину колонки в таблице Word.
+    
+    Почему это нужно?
+    В python-docx нет простого способа задать ширину колонки в процентах.
+    Приходится работать напрямую с XML-структурой документа через OxmlElement.
+    
+    Параметры:
+        col: объект колонки таблицы
+        width_twips: ширина в единицах Twips (1 дюйм = 1440 twips)
+    """
     for cell in col.cells:
-        tc = cell._element.tcPr
-        tcW = OxmlElement('w:tcW')
-        tcW.set(qn('w:w'), str(int(width_twips)))
-        tcW.set(qn('w:type'), 'dxa')
-        tc.append(tcW)
+        tc = cell._element.tcPr  # Получаем XML-элемент настроек ячейки
+        tcW = OxmlElement('w:tcW')  # Создаём элемент для ширины
+        tcW.set(qn('w:w'), str(int(width_twips)))  # Устанавливаем значение ширины
+        tcW.set(qn('w:type'), 'dxa')  # Тип единиц измерения: дюймы
+        tc.append(tcW)  # Добавляем настройку в ячейку
+
 
 def add_table_from_df(doc, df, header_text=None):
-    """Добавляет таблицу из DataFrame в документ с заголовком и обработкой пустых данных"""
-    # 🔴 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: проверка до создания таблицы
+    """
+    Добавляет таблицу из DataFrame (pandas) в документ Word.
+    
+    Особенности:
+    • Автоматически обрабатывает пустые данные (NaN, None)
+    • Устанавливает пропорции колонок 25%/75% как в корпоративном шаблоне
+    • Добавляет заголовок таблицы (опционально)
+    • Обеспечивает читаемый шрифт и отступы
+    
+    Параметры:
+        doc: объект документа Word
+        df: DataFrame с данными таблицы
+        header_text: текст заголовка над таблицей (опционально)
+    """
+    # 🔴 КРИТИЧЕСКАЯ ПРОВЕРКА: если таблица пустая — не падаем с ошибкой
     if df.empty or len(df.columns) == 0:
         if header_text:
             p = doc.add_paragraph()
@@ -40,33 +93,35 @@ def add_table_from_df(doc, df, header_text=None):
         doc.add_paragraph().paragraph_format.space_after = Pt(6)
         return
 
-    # Заголовок таблицы (опционально)
+    # Добавляем заголовок таблицы (если указан)
     if header_text:
         p = doc.add_paragraph()
         p.add_run(header_text).bold = True
         p.paragraph_format.space_after = Pt(6)
 
-    # Создание таблицы
+    # Создаём таблицу: 1 строка для заголовков + данные из DataFrame
     table = doc.add_table(rows=1, cols=len(df.columns))
-    table.style = 'Table Grid'
-    table.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+    table.style = 'Table Grid'  # Стиль таблицы с рамками
+    table.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER  # Центрируем таблицу
 
-    # Настройка ширины колонок (25%/75% как в образце)
-    total_width = Inches(6.5)
+    # РАСЧЁТ ШИРИНЫ КОЛОНОК (25% для первой колонки, остальное — поровну)
+    total_width = Inches(6.5)  # Общая ширина таблицы (стандарт для А4)
     num_cols = len(df.columns)
     if num_cols > 0:
-        first_width_twips = int(total_width.twips * 0.25)
+        first_width_twips = int(total_width.twips * 0.25)  # 25% для первой колонки
         remaining_width_twips = total_width.twips - first_width_twips
         other_width_twips = int(remaining_width_twips / (num_cols - 1)) if num_cols > 1 else int(remaining_width_twips)
         
+        # Применяем ширину к колонкам
         set_col_width(table.columns[0], first_width_twips)
         for i in range(1, num_cols):
             set_col_width(table.columns[i], other_width_twips)
 
-    # Заголовки колонок
+    # ЗАПОЛНЯЕМ ЗАГОЛОВКИ КОЛОНОК
     hdr_cells = table.rows[0].cells
     for i, column in enumerate(df.columns):
-        hdr_cells[i].text = str(column)
+        hdr_cells[i].text = str(column)  # Текст заголовка
+        # Форматирование заголовков: жирный шрифт, размер 10pt
         for paragraph in hdr_cells[i].paragraphs:
             for run in paragraph.runs:
                 run.font.bold = True
@@ -74,47 +129,73 @@ def add_table_from_df(doc, df, header_text=None):
             paragraph.paragraph_format.space_after = Pt(2)
             paragraph.paragraph_format.space_before = Pt(2)
 
-    # Данные таблицы
+    # ЗАПОЛНЯЕМ ДАННЫЕ ТАБЛИЦЫ
     for _, row in df.iterrows():
-        row_cells = table.add_row().cells
+        row_cells = table.add_row().cells  # Добавляем новую строку
         for i, value in enumerate(row):
-            # 🔴 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: обработка NaN/None
+            # 🔴 ОБРАБОТКА ПУСТЫХ ЗНАЧЕНИЙ: заменяем NaN/None на прочерк
             display_value = str(value) if pd.notna(value) else "—"
             row_cells[i].text = display_value
+            
+            # Форматирование ячеек данных: обычный шрифт 9pt
             for paragraph in row_cells[i].paragraphs:
                 for run in paragraph.runs:
                     run.font.size = Pt(9)
                 paragraph.paragraph_format.space_after = Pt(2)
                 paragraph.paragraph_format.space_before = Pt(2)
 
+    # Добавляем отступ после таблицы для лучшей читаемости
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
+
+# ==================== ГЕНЕРАЦИЯ DOCX (WORD) ====================
+
 def generate_docx(data, module_data_list, defects_df):
-    """Генерирует отчёт в точном соответствии с образцом из PDF"""
-    doc = Document()
+    """
+    Генерирует полный отчёт в формате DOCX (Microsoft Word).
     
-    # Настройка стиля документа
-    style = doc.styles['Normal']
-    style.font.name = 'Calibri Light'
-    style.font.size = Pt(13)
+    Структура документа точно соответствует корпоративному шаблону:
+    • Заголовок по центру, крупный шрифт
+    • Таблицы с пропорциями 25%/75%
+    • Диаграммы встроены как изображения
+    • Все разделы пронумерованы (1., 2., 3...)
+    • Подпись в виде таблицы 3×2
     
+    Параметры:
+        data: словарь с основными данными отчёта
+        module_data_list: список модулей с их тест-кейсами
+        defects_df: DataFrame с дефектами
+    
+    Возвращает:
+        buffer: BytesIO буфер с готовым DOCX-файлом
+    """
+    doc = Document()  # Создаём новый документ Word
+
+    # НАСТРОЙКА ГЛОБАЛЬНОГО СТИЛЯ ДОКУМЕНТА
+    style = doc.styles['Normal']  # Берём базовый стиль
+    style.font.name = 'Calibri Light'  # Корпоративный шрифт
+    style.font.size = Pt(13)  # Размер шрифта по умолчанию
+
     # === ЗАГОЛОВОК ОТЧЁТА (центрированный, крупный) ===
-    title = doc.add_heading(data["report_title"], 0)
+    title = doc.add_heading(data["report_title"], 0)  # Уровень 0 = самый крупный заголовок
     title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
     title_font = title.runs[0].font
     title_font.size = Pt(16)
     title_font.bold = True
-    
+
     # === ТАБЛИЦА С ОСНОВНОЙ ИНФОРМАЦИЕЙ (6 строк × 2 колонки) ===
+    # Рассчитываем ширину колонок: 25% и 75%
     total_width_twips = Inches(6.5).twips
     first_col_width_twips = int(total_width_twips * 0.25)
     second_col_width_twips = int(total_width_twips * 0.75)
-    
+
+    # Создаём таблицу 6×2
     info_table = doc.add_table(rows=6, cols=2)
     info_table.style = 'Table Grid'
     set_col_width(info_table.columns[0], first_col_width_twips)
     set_col_width(info_table.columns[1], second_col_width_twips)
-    
+
+    # Заполняем таблицу данными
     fields = [
         ('Проект:', data["project"]),
         ('Тип приложения:', data["app_type"]),
@@ -124,29 +205,32 @@ def generate_docx(data, module_data_list, defects_df):
         ('QA-инженер:', data["engineer"])
     ]
     for i, (label, value) in enumerate(fields):
-        cell1 = info_table.cell(i, 0)
+        cell1 = info_table.cell(i, 0)  # Левая колонка — заголовок поля
         cell1.text = label
         cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
-            run.font.bold = True
+            run.font.bold = True  # Жирный шрифт для заголовков
         
-        cell2 = info_table.cell(i, 1)
+        cell2 = info_table.cell(i, 1)  # Правая колонка — значение
         cell2.text = value
         cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-    
+
+    # Отступ после таблицы
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
-    
+
     # === РАЗДЕЛ 1: КРАТКОЕ РЕЗЮМЕ ===
-    doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
+    doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)  # Уровень 1 = крупный заголовок раздела
     summary_table = doc.add_table(rows=8, cols=2)
     summary_table.style = 'Table Grid'
     set_col_width(summary_table.columns[0], first_col_width_twips)
     set_col_width(summary_table.columns[1], second_col_width_twips)
-    
+
+    # Рассчитываем проценты для статистики
     total = data['total_tc']
     pass_pct = data['pass'] / total * 100 if total > 0 else 0
     fail_pct = 100 - pass_pct
-    
+
+    # Заполняем таблицу резюме
     summary_fields = [
         ('Статус релиза:', data['release_status']),
         ('Критические дефекты (S1):', str(data['s1'])),
@@ -160,46 +244,49 @@ def generate_docx(data, module_data_list, defects_df):
     for i, (label, value) in enumerate(summary_fields):
         cell1 = summary_table.cell(i, 0)
         cell1.text = label
-        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
             run.font.bold = True
         
         cell2 = summary_table.cell(i, 1)
         cell2.text = value
-        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-    
+
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
-    
+
     # === ДИАГРАММЫ ===
-    # Диаграмма 1: Распределение результатов
-    plt.figure(figsize=(5, 4))
+    # Диаграмма 1: Распределение результатов (круговая)
+    plt.figure(figsize=(5, 4))  # Размер фигуры в дюймах
     plt.pie(
         [data['pass'], data['fail']],
         labels=['PASS', 'FAIL'],
-        autopct='%1.1f%%',
-        colors=['#4CAF50', '#F44336'],
-        startangle=90
+        autopct='%1.1f%%',  # Автоматическое отображение процентов
+        colors=['#4CAF50', '#F44336'],  # Зелёный для PASS, красный для FAIL
+        startangle=90  # Начальный угол поворота
     )
     plt.title('Рис. 1. Распределение результатов тест-кейсов')
+    
+    # Сохраняем диаграмму во временный буфер (без сохранения на диск)
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
-    buf.seek(0)
-    plt.close()
+    buf.seek(0)  # Возвращаем указатель в начало буфера
+    plt.close()  # Закрываем фигуру, чтобы не засорять память
     
+    # Вставляем изображение в документ
     doc.add_picture(buf, width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
-    
-    # Диаграмма 2: Дефекты по серьёзности
+
+    # Диаграмма 2: Дефекты по серьёзности (столбчатая)
     plt.figure(figsize=(5, 4))
     bars = plt.bar(
         ['Critical (S1)', 'Major (S2)'],
         [data['s1'], data['s2']],
-        color=['#F44336', '#FF9800'],
+        color=['#F44336', '#FF9800'],  # Красный для критических, оранжевый для мажорных
         width=0.5
     )
     plt.title('Рис. 2. Дефекты по уровню серьёзности')
     plt.ylabel('Количество')
-    plt.ylim(0, max(data['s1'], data['s2'], 1) * 1.3)
+    plt.ylim(0, max(data['s1'], data['s2'], 1) * 1.3)  # Автоматический масштаб оси Y
+    
+    # Добавляем числовые метки над столбцами
     for bar in bars:
         h = bar.get_height()
         if h > 0:
@@ -210,7 +297,8 @@ def generate_docx(data, module_data_list, defects_df):
                 ha='center',
                 va='bottom'
             )
-    plt.grid(axis='y', alpha=0.3, linestyle='--')
+    plt.grid(axis='y', alpha=0.3, linestyle='--')  # Сетка по вертикали
+    
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
     buf.seek(0)
@@ -218,7 +306,7 @@ def generate_docx(data, module_data_list, defects_df):
     
     doc.add_picture(buf, width=Inches(5))
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
-    
+
     # === РАЗДЕЛ 2: КОНТЕКСТ ТЕСТИРОВАНИЯ ===
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
     context_table = doc.add_table(rows=6, cols=2)
@@ -237,52 +325,50 @@ def generate_docx(data, module_data_list, defects_df):
     for i, (label, value) in enumerate(context_fields):
         cell1 = context_table.cell(i, 0)
         cell1.text = label
-        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
             run.font.bold = True
         
         cell2 = context_table.cell(i, 1)
         cell2.text = value
-        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-    
+
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
-    
+
     # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
     doc.add_heading('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', 1)
     for idx, module_info in enumerate(module_data_list):
         title = module_info['title']
         df = module_info['df']
-        doc.add_heading(f'3.{idx+1}. {title}', 2)
-        add_table_from_df(doc, df)
-    
+        doc.add_heading(f'3.{idx+1}. {title}', 2)  # Уровень 2 = подзаголовок
+        add_table_from_df(doc, df)  # Используем универсальную функцию для таблиц
+
     # === РАЗДЕЛ 4: АНАЛИЗ ДЕФЕКТОВ ===
     doc.add_heading('4. АНАЛИЗ ДЕФЕКТОВ', 1)
     add_table_from_df(doc, defects_df)
-    
-    # Последствия: просто текст после заголовка без лишних отступов
+
+    # Последствия дефектов (простой текст после заголовка)
     p = doc.add_paragraph()
     p.add_run('Последствия: ').bold = True
     p.add_run(data['consequences'])
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
-    
+
     # === РАЗДЕЛ 5: ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ (нумерованный список!) ===
     doc.add_heading('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', 1)
-    # ВАЖНО: в образце используется нумерованный список (1., 2., 3.), а не маркированный
+    # ВАЖНО: в корпоративном шаблоне используется нумерованный список (1., 2., 3.)
     for line in data['limitations'].split('\n'):
         if line.strip():
-            # Убираем автоматическую нумерацию, если пользователь уже ввёл её
             clean_line = line.strip()
+            # Если пользователь не ввёл нумерацию — добавляем автоматически
             if not clean_line[0].isdigit():
-                # Если нет нумерации — добавляем вручную
                 p = doc.add_paragraph(clean_line, style='List Number')
             else:
                 p = doc.add_paragraph(clean_line)
             p.paragraph_format.space_after = Pt(2)
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
-    
+
     # === РАЗДЕЛ 6: ВЫВОД И РЕКОМЕНДАЦИИ ===
     doc.add_heading('6. ВЫВОД И РЕКОМЕНДАЦИИ', 1)
-    # Вывод: текст сразу после слова "Вывод:" без переноса строки
+    
+    # Вывод: текст сразу после слова "Вывод:"
     p = doc.add_paragraph()
     p.add_run('Вывод: ').bold = True
     p.add_run(data['conclusion'])
@@ -297,8 +383,8 @@ def generate_docx(data, module_data_list, defects_df):
             p = doc.add_paragraph(line.strip(), style='List Bullet')
             p.paragraph_format.left_indent = Inches(0.25)
             p.paragraph_format.space_after = Pt(2)
-    
-    # === РАЗДЕЛ 7: ПОДПИСЬ (чистая таблица 3×2 без артефактов) ===
+
+    # === РАЗДЕЛ 7: ПОДПИСЬ (чистая таблица 3×2) ===
     doc.add_heading('7. ПОДПИСЬ', 1)
     signature_table = doc.add_table(rows=3, cols=2)
     signature_table.style = 'Table Grid'
@@ -313,22 +399,33 @@ def generate_docx(data, module_data_list, defects_df):
     for i, (label, value) in enumerate(signature_fields):
         cell1 = signature_table.cell(i, 0)
         cell1.text = label
-        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
         for run in cell1.paragraphs[0].runs:
             run.font.bold = True
         
         cell2 = signature_table.cell(i, 1)
         cell2.text = value
-        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-    
-    # Сохранение документа
+
+    # === СОХРАНЕНИЕ ДОКУМЕНТА В БУФЕР ===
     buffer = io.BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
+    doc.save(buffer)  # Сохраняем документ в память
+    buffer.seek(0)  # Перемещаем указатель в начало для чтения
     return buffer
 
+
+# ==================== ГЕНЕРАЦИЯ HTML ====================
+
 def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
-    """Генерирует диаграммы в base64"""
+    """
+    Генерирует две диаграммы и возвращает их как строки base64.
+    
+    Зачем base64?
+    Чтобы встроить изображения прямо в HTML-файл (без отдельных файлов-картинок).
+    Это делает HTML-отчёт самодостаточным — можно открыть один файл и всё увидеть.
+    
+    Возвращает:
+        (chart1_base64, chart2_base64): две строки с закодированными изображениями
+    """
+    # Диаграмма 1: Распределение результатов
     plt.figure(figsize=(6, 4.5))
     plt.pie(
         [pass_count, fail_count],
@@ -342,7 +439,8 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     buf1 = io.BytesIO()
     plt.savefig(buf1, format='png', dpi=150, bbox_inches='tight', facecolor='white')
     plt.close()
-    
+
+    # Диаграмма 2: Дефекты по серьёзности
     plt.figure(figsize=(6, 4.5))
     bars = plt.bar(
         ['Critical (S1)', 'Major (S2)'],
@@ -353,6 +451,7 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     plt.title('Рис. 2. Дефекты по уровню серьёзности', fontsize=10, pad=15)
     plt.ylabel('Количество', fontsize=11)
     plt.ylim(0, max(s1_count, s2_count, 1) * 1.3)
+    
     for bar in bars:
         h = bar.get_height()
         if h > 0:
@@ -369,13 +468,25 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     buf2 = io.BytesIO()
     plt.savefig(buf2, format='png', dpi=150, bbox_inches='tight', facecolor='white')
     plt.close()
-    
+
+    # Кодируем изображения в base64 для встраивания в HTML
     chart1_base64 = base64.b64encode(buf1.getvalue()).decode('utf-8')
     chart2_base64 = base64.b64encode(buf2.getvalue()).decode('utf-8')
     return chart1_base64, chart2_base64
 
+
 def escape_html(text):
-    """Экранирование HTML для безопасности"""
+    """
+    Экранирует спецсимволы HTML для защиты от XSS-атак.
+    
+    Пример: символ < заменяется на &lt;, чтобы браузер не интерпретировал его как тег.
+    
+    Параметры:
+        text: любой текст (может быть None или не строкой)
+    
+    Возвращает:
+        Безопасная строка для вставки в HTML
+    """
     if pd.isna(text) or text is None:
         return ""
     if not isinstance(text, str):
@@ -387,8 +498,19 @@ def escape_html(text):
             .replace('"', '&quot;')
             .replace("'", '&#39;'))
 
+
 def format_multiline_html(text):
-    """Форматирование многострочного текста для HTML с экранированием"""
+    """
+    Форматирует многострочный текст для корректного отображения в HTML.
+    
+    Заменяет переносы строк на <br> и экранирует содержимое.
+    
+    Параметры:
+        text: текст с переносами строк
+    
+    Возвращает:
+        HTML-совместимая строка
+    """
     if pd.isna(text) or text is None:
         return "—"
     lines = [line.strip() for line in str(text).splitlines() if line.strip()]
@@ -396,116 +518,45 @@ def format_multiline_html(text):
         return "—"
     return "<br>".join(escape_html(line) for line in lines)
 
+
 def generate_html_report(data, module_data_list, defects_df):
-    """Генерирует HTML-отчёт с интерактивными диаграммами Plotly"""
+    """
+    Генерирует отчёт в формате HTML с встроенными стилями и диаграммами.
     
-    # ===== ИНТЕРАКТИВНАЯ ДИАГРАММА 1: Распределение результатов =====
-    fig1 = go.Figure(data=[go.Pie(
-        labels=['PASS', 'FAIL'],
-        values=[data['pass'], data['fail']],
-        marker=dict(colors=['#4CAF50', '#F44336']),
-        textinfo='label+percent',
-        textfont=dict(size=14),
-        hoverinfo='label+value+percent',
-        hole=0.4  # Кольцевая диаграмма (можно убрать для обычной)
-    )])
+    Особенности:
+    • Полностью самодостаточный файл (стили + изображения внутри)
+    • Поддержка печати (правильные отступы, разрывы страниц)
+    • Адаптивный дизайн для мобильных устройств
+    • Цветовое выделение статусов PASS/FAIL
     
-    fig1.update_layout(
-        title=dict(
-            text='Рис. 1. Распределение результатов тест-кейсов',
-            font=dict(size=16, family='Arial'),
-            x=0.5,
-            xanchor='center'
-        ),
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="center",
-            x=0.5
-        ),
-        margin=dict(t=50, b=30, l=30, r=30),
-        height=400,
-        hoverlabel=dict(
-            bgcolor="white",
-            font_size=12,
-            font_family="Arial"
-        )
-    )
+    Возвращает:
+        buffer: BytesIO буфер с готовым HTML-файлом
+    """
+    # Генерируем диаграммы в base64
+    chart1, chart2 = generate_chart_base64(data['pass'], data['fail'], data['s1'], data['s2'])
     
-    # Преобразуем в HTML
-    chart1_html = pio.to_html(fig1, full_html=False, include_plotlyjs='cdn')
-    
-    # ===== ИНТЕРАКТИВНАЯ ДИАГРАММА 2: Дефекты по серьёзности =====
-    fig2 = go.Figure(data=[go.Bar(
-        x=['Critical (S1)', 'Major (S2)'],
-        y=[data['s1'], data['s2']],
-        marker=dict(
-            color=['#F44336', '#FF9800'],
-            line=dict(color='black', width=1)
-        ),
-        text=[str(data['s1']), str(data['s2'])],
-        textposition='outside',
-        hoverinfo='x+y',
-        hoverlabel=dict(
-            bgcolor="white",
-            font_size=12
-        )
-    )])
-    
-    fig2.update_layout(
-        title=dict(
-            text='Рис. 2. Дефекты по уровню серьёзности',
-            font=dict(size=16, family='Arial'),
-            x=0.5,
-            xanchor='center'
-        ),
-        yaxis=dict(
-            title='Количество',
-            titlefont=dict(size=14),
-            gridcolor='lightgray',
-            gridwidth=1,
-            zeroline=True,
-            zerolinewidth=2,
-            zerolinecolor='black'
-        ),
-        xaxis=dict(
-            tickfont=dict(size=13, family='Arial'),
-            titlefont=dict(size=14)
-        ),
-        showlegend=False,
-        margin=dict(t=50, b=40, l=50, r=30),
-        height=400,
-        plot_bgcolor='white'
-    )
-    
-    # Преобразуем в HTML
-    chart2_html = pio.to_html(fig2, full_html=False, include_plotlyjs=False)
-    
-    # ===== РАСЧЁТ МЕТРИК =====
+    # Рассчитываем проценты
     total = data['total_tc']
     pass_pct = data['pass'] / total * 100 if total > 0 else 0
     fail_pct = 100 - pass_pct
-    
-    # ===== ГЕНЕРАЦИЯ HTML =====
+
+    # Формируем HTML-код (используем f-строки для подстановки данных)
     html = f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{escape_html(data['report_title'])}</title>
-    <script src="https://cdn.plotly.com/plotly-latest.min.js"></script>
     <style>
+        /* Глобальные стили документа */
         body {{
             font-family: Calibri Light, 'Segoe UI', sans-serif;
             font-size: 13pt;
             line-height: 1.5;
-            max-width: 1000px;
+            max-width: 800px;
             margin: 0 auto;
             padding: 20px;
             color: #000;
-            background-color: #f9f9f9;
         }}
         h1 {{
             text-align: center;
@@ -513,101 +564,81 @@ def generate_html_report(data, module_data_list, defects_df):
             font-weight: bold;
             margin-bottom: 25px;
             margin-top: 0;
-            color: #2c3e50;
         }}
         h2 {{
             font-size: 14pt;
-            margin-top: 30px;
-            margin-bottom: 15px;
-            padding-bottom: 5px;
-            border-bottom: 3px solid #3498db;
-            color: #2c3e50;
+            margin-top: 25px;
+            margin-bottom: 12px;
+            padding-bottom: 4px;
+            border-bottom: 2px solid #000; /* Подчёркивание заголовка */
         }}
         h3 {{
             font-size: 13pt;
             margin-top: 20px;
             margin-bottom: 10px;
-            color: #34495e;
         }}
         table {{
             width: 100%;
             border-collapse: collapse;
-            margin: 15px 0 20px 0;
-            background-color: #fff;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 12px 0 18px 0;
+            page-break-inside: avoid; /* Запрет разрыва таблицы при печати */
         }}
         th, td {{
-            border: 1px solid #ddd;
-            padding: 10px 12px;
+            border: 1px solid #000;
+            padding: 8px 10px;
             text-align: left;
             vertical-align: top;
         }}
         th {{
-            background-color: #f2f2f2;
-            font-weight: bold;
-            color: #2c3e50;
-        }}
-        tr:hover {{
             background-color: #f5f5f5;
+            font-weight: bold;
         }}
+        /* Стили для колонок с заголовками (25% ширины) */
         .info-table td:first-child,
         .summary-table td:first-child,
         .context-table td:first-child,
         .signature-table td:first-child {{
             width: 25%;
             font-weight: bold;
-            background-color: #e8f4f8;
+            background-color: #f9f9f9;
         }}
-        .status-pass {{ 
-            color: #2e7d32; 
-            font-weight: bold;
-            background-color: #e8f5e9;
-            padding: 2px 6px;
-            border-radius: 3px;
-        }}
-        .status-fail {{ 
-            color: #d32f2f; 
-            font-weight: bold;
-            background-color: #ffebee;
-            padding: 2px 6px;
-            border-radius: 3px;
-        }}
-        .risk {{ 
-            color: #d32f2f; 
-            font-weight: bold;
-            background-color: #ffebee;
-            padding: 2px 6px;
-            border-radius: 3px;
-        }}
+        /* Цветовое выделение статусов */
+        .status-pass {{ color: #2e7d32; font-weight: bold; }}
+        .status-fail {{ color: #d32f2f; font-weight: bold; }}
+        .risk {{ color: #d32f2f; font-weight: bold; }}
+        /* Стили для диаграмм */
         .chart-container {{
             text-align: center;
-            margin: 30px 0;
-            background-color: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin: 25px 0;
+            page-break-inside: avoid;
         }}
         .chart-title {{
             font-weight: bold;
-            margin-top: 10px;
+            margin-top: 8px;
             font-size: 11pt;
-            color: #555;
         }}
-        ol, ul {{
-            padding-left: 25px;
-            margin: 12px 0;
+        /* Списки */
+        ol {{
+            padding-left: 20px;
+            margin: 10px 0;
+        }}
+        ul {{
+            padding-left: 20px;
+            margin: 10px 0;
         }}
         li {{
-            margin-bottom: 8px;
-            line-height: 1.6;
+            margin-bottom: 5px;
         }}
+        /* Стили для печати */
         @media print {{
             body {{
                 padding: 15px;
-                background-color: #fff;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }}
-            .chart-container {{
-                page-break-inside: avoid;
+            .chart-container img {{
+                max-width: 100% !important;
+                height: auto !important;
             }}
             table {{
                 page-break-inside: avoid;
@@ -625,6 +656,7 @@ def generate_html_report(data, module_data_list, defects_df):
 <body>
     <h1>{escape_html(data['report_title'])}</h1>
     
+    <!-- Таблица с основной информацией -->
     <table class="info-table">
         <tr><td>Проект:</td><td>{escape_html(data['project'])}</td></tr>
         <tr><td>Тип приложения:</td><td>{escape_html(data['app_type'])}</td></tr>
@@ -646,12 +678,15 @@ def generate_html_report(data, module_data_list, defects_df):
         <tr><td>Рекомендация:</td><td>{escape_html(data['recommendation'])}</td></tr>
     </table>
     
+    <!-- Диаграммы -->
     <div class="chart-container">
-        {chart1_html}
+        <img src="data:image/png;base64,{chart1}" alt="Распределение результатов тест-кейсов" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
+        <div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
     </div>
     
     <div class="chart-container">
-        {chart2_html}
+        <img src="data:image/png;base64,{chart2}" alt="Дефекты по уровню серьёзности" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
+        <div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
     </div>
     
     <h2>2. КОНТЕКСТ ТЕСТИРОВАНИЯ</h2>
@@ -663,43 +698,45 @@ def generate_html_report(data, module_data_list, defects_df):
         <tr><td>Инструменты:</td><td>{escape_html(data['tools'])}</td></tr>
         <tr><td>Методология:</td><td>{escape_html(data['methodology'])}</td></tr>
     </table>
-"""
-    
+    """
+
     # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
     html += "<h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>"
     for idx, module_info in enumerate(module_data_list):
         html += f"<h3>3.{idx+1}. {escape_html(module_info['title'])}</h3>"
+        # Таблица тест-кейсов модуля
         html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 45%;">Сценарий</th><th style="width: 12%;">Статус</th><th style="width: 28%;">Комментарий</th></tr>'
         df = module_info['df']
         if not df.empty and len(df.columns) >= 4:
             for _, row in df.iterrows():
+                # Определяем класс для цветового выделения статуса
                 status_class = "status-pass" if str(row[2]).upper() == "PASS" else "status-fail" if str(row[2]).upper() == "FAIL" else ""
                 html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td class='{status_class}'>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td></tr>"
         else:
             html += "<tr><td colspan='4' style='text-align:center'>Нет данных</td></tr>"
         html += "</table>"
-    
+
     # === РАЗДЕЛ 4: АНАЛИЗ ДЕФЕКТОВ ===
     html += "<h2>4. АНАЛИЗ ДЕФЕКТОВ</h2>"
     html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 15%;">Модуль</th><th>Заголовок</th><th style="width: 20%;">Серьёзность</th><th style="width: 15%;">Статус</th></tr>'
-    if not defects.empty and len(defects.columns) >= 5:
-        for _, row in defects.iterrows():
+    if not defects_df.empty and len(defects_df.columns) >= 5:
+        for _, row in defects_df.iterrows():
             html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td><td>{escape_html(row[4])}</td></tr>"
     else:
         html += "<tr><td colspan='5' style='text-align:center'>Нет данных</td></tr>"
     html += "</table>"
-    
-    # === РАЗДЕЛ 5: ПОСЛЕДСТВИЯ ===
+
+    # Последствия дефектов
     html += f"<p><strong>Последствия:</strong> {format_multiline_html(data['consequences'])}</p>"
-    
-    # === РАЗДЕЛ 6: ОГРАНИЧЕНИЯ ===
+
+    # === РАЗДЕЛ 5: ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ ===
     html += "<h2>5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ</h2><ol>"
     for line in data['limitations'].split('\n'):
         if line.strip():
             html += f"<li>{escape_html(line.strip())}</li>"
     html += "</ol>"
-    
-    # === РАЗДЕЛ 7: ВЫВОД И РЕКОМЕНДАЦИИ ===
+
+    # === РАЗДЕЛ 6: ВЫВОД И РЕКОМЕНДАЦИИ ===
     html += f"""
     <h2>6. ВЫВОД И РЕКОМЕНДАЦИИ</h2>
     <p><strong>Вывод:</strong> {escape_html(data['conclusion'])}</p>
@@ -710,8 +747,8 @@ def generate_html_report(data, module_data_list, defects_df):
         if line.strip():
             html += f"<li>{escape_html(line.strip())}</li>"
     html += "</ul>"
-    
-    # === РАЗДЕЛ 8: ПОДПИСЬ ===
+
+    # === РАЗДЕЛ 7: ПОДПИСЬ ===
     html += f"""
     <h2>7. ПОДПИСЬ</h2>
     <table class="signature-table">
@@ -721,54 +758,78 @@ def generate_html_report(data, module_data_list, defects_df):
     </table>
 </body>
 </html>"""
-    
+
+    # Сохраняем HTML в буфер
     buffer = io.BytesIO()
     buffer.write(html.encode('utf-8'))
     buffer.seek(0)
     return buffer
 
+
+# ==================== ГЕНЕРАЦИЯ XLSX (EXCEL) ====================
+
 def generate_xlsx_single_sheet(data, module_data_list, defects_df):
-    """Генерирует Excel-отчёт с исправленными цветами (формат ARGB)"""
+    """
+    Генерирует отчёт в формате Excel (один лист).
+    
+    Особенности оформления:
+    • Цветовые коды соответствуют корпоративному стилю (ARGB формат)
+    • Автоматическое форматирование ячеек (перенос текста, выравнивание)
+    • Условное форматирование для статусов PASS/FAIL
+    • Оптимальная ширина колонок
+    
+    Важно: цвета в openpyxl используют формат ARGB (8 символов), а не обычный #RRGGBB!
+    Пример: #4472C4 → FF4472C4 (FF = непрозрачность 100%)
+    
+    Возвращает:
+        buffer: BytesIO буфер с готовым XLSX-файлом
+    """
     output = io.BytesIO()
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Отчёт о тестировании"
-    
+
+    # Настройка ширины колонок (в символах)
     COL_WIDTHS = {'A': 22, 'B': 14, 'C': 32, 'D': 12, 'E': 35}
+
+    # 🔴 ЦВЕТОВАЯ ПАЛИТРА В ФОРМАТЕ ARGB (8 символов!)
+    # FF в начале = 100% непрозрачность
+    header_fill = PatternFill(start_color="FF4472C4", end_color="FF4472C4", fill_type="solid")  # Синий заголовок
+    section_fill = PatternFill(start_color="FF5B9BD5", end_color="FF5B9BD5", fill_type="solid")  # Светло-синий раздел
+    context_fill = PatternFill(start_color="FF70AD47", end_color="FF70AD47", fill_type="solid")  # Зелёный контекст
+    defects_fill = PatternFill(start_color="FF7030A0", end_color="FF7030A0", fill_type="solid")  # Фиолетовый дефекты
+    notes_fill = PatternFill(start_color="FFFFC000", end_color="FFFFC000", fill_type="solid")  # Оранжевый заметки
+    signature_fill = PatternFill(start_color="FF333333", end_color="FF333333", fill_type="solid")  # Тёмно-серый подпись
     
-    # 🔴 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: цвета в формате ARGB (8 символов)
-    header_fill = PatternFill(start_color="FF4472C4", end_color="FF4472C4", fill_type="solid")
-    section_fill = PatternFill(start_color="FF5B9BD5", end_color="FF5B9BD5", fill_type="solid")
-    context_fill = PatternFill(start_color="FF70AD47", end_color="FF70AD47", fill_type="solid")
-    defects_fill = PatternFill(start_color="FF7030A0", end_color="FF7030A0", fill_type="solid")
-    notes_fill = PatternFill(start_color="FFFFC000", end_color="FFFFC000", fill_type="solid")
-    signature_fill = PatternFill(start_color="FF333333", end_color="FF333333", fill_type="solid")
-    
-    pass_fill = PatternFill(start_color="FFC6EFCE", end_color="FFC6EFCE", fill_type="solid")
-    fail_fill = PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid")
-    
+    # Цвета для статусов тест-кейсов
+    pass_fill = PatternFill(start_color="FFC6EFCE", end_color="FFC6EFCE", fill_type="solid")  # Светло-зелёный PASS
+    fail_fill = PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid")  # Светло-красный FAIL
+
+    # Стиль границ ячеек
     thin_border = Border(
         left=Side(style='thin'), right=Side(style='thin'),
         top=Side(style='thin'), bottom=Side(style='thin')
     )
-    
+
+    # Стили выравнивания текста
     wrap_left = Alignment(wrap_text=True, vertical="top", horizontal="left")
     wrap_center = Alignment(wrap_text=True, vertical="center", horizontal="center")
     wrap_right = Alignment(wrap_text=True, vertical="top", horizontal="right")
-    
-    row = 1
-    
-    # Заголовок
-    ws.merge_cells(f'A{row}:E{row}')
+
+    row = 1  # Начинаем с первой строки
+
+    # === ЗАГОЛОВОК ОТЧЁТА ===
+    ws.merge_cells(f'A{row}:E{row}')  # Объединяем 5 колонок
     cell = ws.cell(row=row, column=1, value=data["report_title"])
-    cell.font = Font(name='Calibri Light', size=16, bold=True, color="FFFFFF")
+    cell.font = Font(name='Calibri Light', size=16, bold=True, color="FFFFFF")  # Белый текст на цветном фоне
     cell.fill = header_fill
     cell.alignment = wrap_center
+    # Добавляем границы ко всем ячейкам объединённого диапазона
     for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
-    row += 2
-    
-    # Ключевые метрики
+    row += 2  # Пропускаем строку для отступа
+
+    # === КЛЮЧЕВЫЕ МЕТРИКИ ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="📊 КЛЮЧЕВЫЕ МЕТРИКИ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -777,7 +838,8 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
     row += 1
-    
+
+    # Таблица метрик (левая колонка — заголовок, правая — значение)
     summary_rows = [
         ["Проект", data["project"]],
         ["Версия", data["version"]],
@@ -794,14 +856,14 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
         ws.cell(row=row, column=1, value=label).border = thin_border
         ws.cell(row=row, column=1, value=label).alignment = wrap_right
-        ws.merge_cells(f'B{row}:E{row}')
+        ws.merge_cells(f'B{row}:E{row}')  # Объединяем колонки B-E для значения
         cell_value = ws.cell(row=row, column=2, value=value)
         cell_value.border = thin_border
         cell_value.alignment = wrap_left
         row += 1
     row += 1
-    
-    # Контекст тестирования
+
+    # === КОНТЕКСТ ТЕСТИРОВАНИЯ ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="⚙️ КОНТЕКСТ ТЕСТИРОВАНИЯ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -810,7 +872,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
     row += 1
-    
+
     context_rows = [
         ["Устройство / Браузер", data["device_browser"]],
         ["ОС / Платформа", data["os_platform"]],
@@ -831,8 +893,8 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell_value.alignment = wrap_left
         row += 1
     row += 1
-    
-    # Результаты по модулям
+
+    # === РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="✅ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -841,7 +903,8 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
     row += 1
-    
+
+    # Заголовки таблицы тест-кейсов
     test_headers = ["Модуль", "ID", "Сценарий", "Статус", "Комментарий"]
     for col_idx, header in enumerate(test_headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)
@@ -850,7 +913,8 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell.border = thin_border
         cell.alignment = wrap_center
     row += 1
-    
+
+    # Заполняем данные тест-кейсов по модулям
     for module_info in module_data_list:
         module_name = module_info['title']
         df = module_info['df']
@@ -863,15 +927,16 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 ws.cell(row=row, column=3, value=test_row[1]).border = thin_border
                 ws.cell(row=row, column=3, value=test_row[1]).alignment = wrap_left
                 
+                # Условное форматирование статуса
                 status_cell = ws.cell(row=row, column=4, value=test_row[2])
                 status_cell.border = thin_border
                 status_cell.alignment = wrap_center
                 if str(test_row[2]).upper() == "PASS":
                     status_cell.fill = pass_fill
-                    status_cell.font = Font(color="006100", bold=True)
+                    status_cell.font = Font(color="006100", bold=True)  # Тёмно-зелёный текст
                 elif str(test_row[2]).upper() == "FAIL":
                     status_cell.fill = fail_fill
-                    status_cell.font = Font(color="9C0006", bold=True)
+                    status_cell.font = Font(color="9C0006", bold=True)  # Тёмно-красный текст
                 
                 ws.cell(row=row, column=5, value=test_row[3]).border = thin_border
                 ws.cell(row=row, column=5, value=test_row[3]).alignment = wrap_left
@@ -883,8 +948,8 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
             cell.border = thin_border
             row += 1
     row += 1
-    
-    # Анализ дефектов
+
+    # === АНАЛИЗ ДЕФЕКТОВ ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="🐞 АНАЛИЗ ДЕФЕКТОВ")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -893,7 +958,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
     row += 1
-    
+
     defect_headers = ["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"]
     for col_idx, header in enumerate(defect_headers, start=1):
         cell = ws.cell(row=row, column=col_idx, value=header)
@@ -902,12 +967,13 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell.border = thin_border
         cell.alignment = wrap_center
     row += 1
-    
+
     if not defects_df.empty and len(defects_df.columns) >= 5:
         for _, defect_row in defects_df.iterrows():
             for col_idx, value in enumerate(defect_row, start=1):
                 cell = ws.cell(row=row, column=col_idx, value=value if pd.notna(value) else "—")
                 cell.border = thin_border
+                # Выравнивание: центр для ID/статуса, лево для описаний
                 cell.alignment = wrap_left if col_idx in (3, 5) else wrap_center
             row += 1
     else:
@@ -917,8 +983,8 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell.border = thin_border
         row += 1
     row += 1
-    
-    # Ограничения, вывод, рекомендации
+
+    # === ОГРАНИЧЕНИЯ, ВЫВОД, РЕКОМЕНДАЦИИ ===
     sections = [
         ("⚠️ ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ", data["limitations"]),
         ("💡 ВЫВОД", data["conclusion"]),
@@ -941,8 +1007,8 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 cell.border = thin_border
                 row += 1
         row += 1
-    
-    # Подпись
+
+    # === ПОДПИСЬ ===
     ws.merge_cells(f'A{row}:E{row}')
     cell = ws.cell(row=row, column=1, value="Подпись")
     cell.font = Font(bold=True, size=12, color="FFFFFF")
@@ -951,7 +1017,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     for col in range(1, 6):
         ws.cell(row=row, column=col).border = thin_border
     row += 1
-    
+
     signature_rows = [
         ["Роль", data["role"]],
         ["ФИО", data["fullname"]],
@@ -966,15 +1032,19 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell_value.border = thin_border
         cell_value.alignment = wrap_left
         row += 1
-    
+
+    # Устанавливаем ширину колонок
     for col_letter, width in COL_WIDTHS.items():
         ws.column_dimensions[col_letter].width = width
-    
+
+    # Сохраняем файл в буфер
     wb.save(output)
     output.seek(0)
     return output
 
-# === ДАННЫЕ ПО УМОЛЧАНИЮ (точно как в образце PDF) ===
+
+# ==================== ДАННЫЕ ПО УМОЛЧАНИЮ (пример для быстрого старта) ====================
+
 default_modules = [
     {
         "title": "Главный экран и навигация",
@@ -1016,20 +1086,25 @@ default_defects = pd.DataFrame([
     ["BUG-SEC-002", "Безопасность", "Уязвимость к XSS-атакам в поле поиска", "Critical (S1)", "New"]
 ], columns=["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"])
 
-# === ИНТЕРФЕЙС STREAMLIT (структура как в отчёте из PDF) ===
+
+# ==================== ИНТЕРФЕЙС STREAMLIT (пользовательская часть) ====================
+
+# Настройка страницы веб-приложения
 st.set_page_config(page_title="Генератор отчёта", layout="wide")
 st.title("📄 Отчёт о тестировании")
 
+# Создаём форму для ввода данных (все поля внутри формы отправляются одновременно)
 with st.form("main_form"):
+    
     # === ЗАГОЛОВОК ОТЧЁТА ===
     report_title = st.text_input(
         "Название отчёта",
         "Отчёт о тестировании мобильного приложения Лемана ПРО"
     )
-    
-    # === ОСНОВНАЯ ИНФОРМАЦИЯ (отдельная секция ДО раздела 1, как в PDF) ===
+
+    # === ОСНОВНАЯ ИНФОРМАЦИЯ ===
     st.subheader("Основная информация")
-    col_info1, col_info2 = st.columns(2)
+    col_info1, col_info2 = st.columns(2)  # Две колонки для компактного размещения
     with col_info1:
         project = st.text_input("Проект", "Лемана ПРО")
         app_type = st.selectbox("Тип приложения", ["Мобильное", "Веб-приложение"], index=0)
@@ -1038,8 +1113,8 @@ with st.form("main_form"):
         test_period = st.text_input("Период тестирования", "29–30 ноября 2025 г.")
         report_date = st.text_input("Дата формирования отчёта", "30 ноября 2025 г.")
         engineer = st.text_input("Тест-инженер", "Черкасов Игорь")
-    
-    # === РАЗДЕЛ 1: КРАТКОЕ РЕЗЮМЕ (только данные резюме, как в таблице из PDF) ===
+
+    # === РАЗДЕЛ 1: КРАТКОЕ РЕЗЮМЕ ===
     st.header("1. Краткое резюме")
     col1, col2 = st.columns(2)
     with col1:
@@ -1051,7 +1126,7 @@ with st.form("main_form"):
         pass_tc = st.number_input("Успешно (Pass)", min_value=0, value=69)
         fail_tc = st.number_input("Упали (Fail)", min_value=0, value=3)
     
-    # Риски и рекомендации — под таблицами (как в образце)
+    # Риски и рекомендации (текстовые поля под таблицами)
     risk = st.text_area(
         "Основной риск",
         "Уязвимости безопасности позволяют нарушителю получить доступ к данным пользователей и вызвать отказ в обслуживании."
@@ -1060,7 +1135,7 @@ with st.form("main_form"):
         "Рекомендация",
         "Релиз возможен только после устранения всех S1/S2 дефектов и повторного тестирования."
     )
-    
+
     # === РАЗДЕЛ 2: КОНТЕКСТ ТЕСТИРОВАНИЯ ===
     st.header("2. Контекст тестирования")
     col3, col4 = st.columns(2)
@@ -1072,23 +1147,26 @@ with st.form("main_form"):
         env_url = st.text_input("URL стенда", "https://test.lemanna.pro")
         tools = st.text_input("Инструменты", "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)")
         methodology = st.text_input("Методология", "Ручное функциональное тестирование + проверка безопасности")
-    
+
     # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
     st.header("3. Результаты тестирования по модулям")
     num_modules = st.slider("Количество модулей", min_value=1, max_value=10, value=4)
+    
     module_data_list = []
     for i in range(num_modules):
+        # Раскрывающийся блок для каждого модуля (удобно для большого количества модулей)
         with st.expander(f"Модуль 3.{i+1}", expanded=True):
             title = st.text_input(
                 f"Название модуля 3.{i+1}",
                 value=default_modules[i]["title"] if i < len(default_modules) else f"Модуль 3.{i+1}",
-                key=f"title_{i}"
+                key=f"title_{i}"  # Уникальный ключ для каждого поля
             )
             df_key = f"mod_{i}"
             default_df = default_modules[i]["df"] if i < len(default_modules) else pd.DataFrame(columns=["ID", "Сценарий", "Статус", "Комментарий"])
+            # Интерактивный редактор таблицы
             df = st.data_editor(
                 default_df,
-                num_rows="dynamic",
+                num_rows="dynamic",  # Позволяет добавлять/удалять строки
                 key=df_key,
                 column_config={
                     "ID": st.column_config.TextColumn("ID", width="small"),
@@ -1098,7 +1176,7 @@ with st.form("main_form"):
                 }
             )
             module_data_list.append({"title": title, "df": df})
-    
+
     # === РАЗДЕЛ 4: АНАЛИЗ ДЕФЕКТОВ ===
     st.header("4. Анализ дефектов")
     defects = st.data_editor(
@@ -1115,16 +1193,19 @@ with st.form("main_form"):
     )
     consequences = st.text_area(
         "Последствия",
-        "- S1 дефекты позволяют злоумышленнику получить данные других пользователей или вывести приложение из строя.\n- S2 дефект снижает юзабилити: пользователи не найдут товар при опечатке."
+        "- S1 дефекты позволяют злоумышленнику получить данные других пользователей или вывести приложение из строя.\n"
+        "- S2 дефект снижает юзабилити: пользователи не найдут товар при опечатке."
     )
-    
+
     # === РАЗДЕЛ 5: ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ ===
     st.header("5. Ограничения тестирования")
     limitations = st.text_area(
         "Ограничения тестирования",
-        "1. Не тестировалась оплата через Apple Pay (устройство Android).\n2. Не проверена синхронизация с 1С (нет доступа к интеграционному стенду).\n3. Не проведено нагрузочное тестирование (ограничение по времени)."
+        "1. Не тестировалась оплата через Apple Pay (устройство Android).\n"
+        "2. Не проверена синхронизация с 1С (нет доступа к интеграционному стенду).\n"
+        "3. Не проведено нагрузочное тестирование (ограничение по времени)."
     )
-    
+
     # === РАЗДЕЛ 6: ВЫВОД И РЕКОМЕНДАЦИИ ===
     st.header("6. Вывод и рекомендации")
     conclusion = st.text_area(
@@ -1133,52 +1214,61 @@ with st.form("main_form"):
     )
     recommendations_detailed = st.text_area(
         "Рекомендации (подробно)",
-        "Немедленно исправить уязвимости BUG-SEC-001 и BUG-SEC-002.\nРеализовать fuzzy search для повышения юзабилити (BUG-SEARCH-001).\nПровести повторное тестирование после фиксов с фокусом на:\n- Повторную проверку полей ввода на инъекции\n- Тестирование сценариев поиска с опечатками\n- Настроить автоматизированную проверку безопасности (например, OWASP ZAP) в CI/CD."
+        "Немедленно исправить уязвимости BUG-SEC-001 и BUG-SEC-002.\n"
+        "Реализовать fuzzy search для повышения юзабилити (BUG-SEARCH-001).\n"
+        "Провести повторное тестирование после фиксов с фокусом на:\n"
+        "- Повторную проверку полей ввода на инъекции\n"
+        "- Тестирование сценариев поиска с опечатками\n"
+        "- Настроить автоматизированную проверку безопасности (например, OWASP ZAP) в CI/CD."
     )
-    
+
     # === РАЗДЕЛ 7: ПОДПИСЬ ===
     st.header("7. Подпись")
     role = st.text_input("Роль", "QA-инженер")
     fullname = st.text_input("ФИО", "Черкасов Игорь")
     signature_date = st.text_input("Дата", "30.11.2025")
-    
+
+    # Кнопка отправки формы
     submitted = st.form_submit_button("📥 Создать отчёт", type="primary")
 
-# === ГЕНЕРАЦИЯ ОТЧЁТА ===
+
+# ==================== ГЕНЕРАЦИЯ ОТЧЁТА (после нажатия кнопки) ====================
+
 if submitted:
+    # === ВАЛИДАЦИЯ ДАННЫХ ===
     validation_errors = []
     
-    # 🔴 КРИТИЧЕСКАЯ ВАЛИДАЦИЯ
+    # Проверка: сумма PASS + FAIL должна равняться общему количеству тест-кейсов
     if pass_tc + fail_tc != total_tc:
         validation_errors.append(
             f"⚠️ Сумма статусов ({pass_tc} PASS + {fail_tc} FAIL = {pass_tc + fail_tc}) "
             f"не равна общему количеству тест-кейсов ({total_tc})"
         )
     
+    # Проверка обязательных полей
     if total_tc <= 0:
         validation_errors.append("❌ Общее количество тест-кейсов должно быть больше 0")
-    
     if s1 < 0 or s2 < 0:
         validation_errors.append("❌ Количество дефектов не может быть отрицательным")
-    
     if not report_title.strip():
         validation_errors.append("❌ Название отчёта не может быть пустым")
     
-    # Проверка обязательных полей
     required_fields = ['project', 'version', 'env_url', 'engineer', 'test_period', 'report_date']
     field_values = {
-        'project': project, 'version': version, 'env_url': env_url, 
+        'project': project, 'version': version, 'env_url': env_url,
         'engineer': engineer, 'test_period': test_period, 'report_date': report_date
     }
     for field in required_fields:
         if not field_values[field].strip():
             validation_errors.append(f"❌ Поле '{field}' не может быть пустым")
     
+    # Если есть ошибки — показываем их и останавливаем генерацию
     if validation_errors:
         for error in validation_errors:
             st.error(error)
         st.stop()
-    
+
+    # === СОБИРАЕМ ВСЕ ДАННЫЕ В ОДИН СЛОВАРЬ ===
     data = {
         "report_title": report_title,
         "project": project,
@@ -1209,7 +1299,8 @@ if submitted:
         "fullname": fullname,
         "signature_date": signature_date,
     }
-    
+
+    # === ГЕНЕРАЦИЯ ОТЧЁТОВ В ТРЁХ ФОРМАТАХ ===
     try:
         docx_buffer = generate_docx(data, module_data_list, defects)
         html_buffer = generate_html_report(data, module_data_list, defects)
@@ -1217,6 +1308,7 @@ if submitted:
         
         st.success("✅ Отчёт успешно создан!")
         
+        # Три кнопки для скачивания в разных форматах
         col1, col2, col3 = st.columns(3)
         with col1:
             st.download_button(
@@ -1245,6 +1337,7 @@ if submitted:
             )
     
     except Exception as e:
+        # При ошибке показываем пользователю сообщение и детали для отладки
         st.error(f"❌ Ошибка генерации отчёта: {str(e)}")
         with st.expander("Детали ошибки (для отладки)"):
             st.code(traceback.format_exc())
