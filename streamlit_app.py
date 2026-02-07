@@ -13,6 +13,8 @@ import io
 import base64
 import traceback
 import openpyxl
+import plotly.graph_objects as go
+import plotly.io as pio
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
@@ -395,214 +397,328 @@ def format_multiline_html(text):
     return "<br>".join(escape_html(line) for line in lines)
 
 def generate_html_report(data, module_data_list, defects_df):
-    """Генерирует HTML-отчёт в соответствии с образцом"""
-    chart1, chart2 = generate_chart_base64(data['pass'], data['fail'], data['s1'], data['s2'])
+    """Генерирует HTML-отчёт с интерактивными диаграммами Plotly"""
+    
+    # ===== ИНТЕРАКТИВНАЯ ДИАГРАММА 1: Распределение результатов =====
+    fig1 = go.Figure(data=[go.Pie(
+        labels=['PASS', 'FAIL'],
+        values=[data['pass'], data['fail']],
+        marker=dict(colors=['#4CAF50', '#F44336']),
+        textinfo='label+percent',
+        textfont=dict(size=14),
+        hoverinfo='label+value+percent',
+        hole=0.4  # Кольцевая диаграмма (можно убрать для обычной)
+    )])
+    
+    fig1.update_layout(
+        title=dict(
+            text='Рис. 1. Распределение результатов тест-кейсов',
+            font=dict(size=16, family='Arial'),
+            x=0.5,
+            xanchor='center'
+        ),
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5
+        ),
+        margin=dict(t=50, b=30, l=30, r=30),
+        height=400,
+        hoverlabel=dict(
+            bgcolor="white",
+            font_size=12,
+            font_family="Arial"
+        )
+    )
+    
+    # Преобразуем в HTML
+    chart1_html = pio.to_html(fig1, full_html=False, include_plotlyjs='cdn')
+    
+    # ===== ИНТЕРАКТИВНАЯ ДИАГРАММА 2: Дефекты по серьёзности =====
+    fig2 = go.Figure(data=[go.Bar(
+        x=['Critical (S1)', 'Major (S2)'],
+        y=[data['s1'], data['s2']],
+        marker=dict(
+            color=['#F44336', '#FF9800'],
+            line=dict(color='black', width=1)
+        ),
+        text=[str(data['s1']), str(data['s2'])],
+        textposition='outside',
+        hoverinfo='x+y',
+        hoverlabel=dict(
+            bgcolor="white",
+            font_size=12
+        )
+    )])
+    
+    fig2.update_layout(
+        title=dict(
+            text='Рис. 2. Дефекты по уровню серьёзности',
+            font=dict(size=16, family='Arial'),
+            x=0.5,
+            xanchor='center'
+        ),
+        yaxis=dict(
+            title='Количество',
+            titlefont=dict(size=14),
+            gridcolor='lightgray',
+            gridwidth=1,
+            zeroline=True,
+            zerolinewidth=2,
+            zerolinecolor='black'
+        ),
+        xaxis=dict(
+            tickfont=dict(size=13, family='Arial'),
+            titlefont=dict(size=14)
+        ),
+        showlegend=False,
+        margin=dict(t=50, b=40, l=50, r=30),
+        height=400,
+        plot_bgcolor='white'
+    )
+    
+    # Преобразуем в HTML
+    chart2_html = pio.to_html(fig2, full_html=False, include_plotlyjs=False)
+    
+    # ===== РАСЧЁТ МЕТРИК =====
     total = data['total_tc']
     pass_pct = data['pass'] / total * 100 if total > 0 else 0
     fail_pct = 100 - pass_pct
     
+    # ===== ГЕНЕРАЦИЯ HTML =====
     html = f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{escape_html(data['report_title'])}</title>
-<style>
-body {{
-font-family: Calibri Light, 'Segoe UI', sans-serif;
-font-size: 13pt;
-line-height: 1.5;
-max-width: 800px;
-margin: 0 auto;
-padding: 20px;
-color: #000;
-}}
-h1 {{
-text-align: center;
-font-size: 16pt;
-font-weight: bold;
-margin-bottom: 25px;
-margin-top: 0;
-}}
-h2 {{
-font-size: 14pt;
-margin-top: 25px;
-margin-bottom: 12px;
-padding-bottom: 4px;
-border-bottom: 2px solid #000;
-}}
-h3 {{
-font-size: 13pt;
-margin-top: 20px;
-margin-bottom: 10px;
-}}
-table {{
-width: 100%;
-border-collapse: collapse;
-margin: 12px 0 18px 0;
-page-break-inside: avoid;
-}}
-th, td {{
-border: 1px solid #000;
-padding: 8px 10px;
-text-align: left;
-vertical-align: top;
-}}
-th {{
-background-color: #f5f5f5;
-font-weight: bold;
-}}
-.info-table td:first-child,
-.summary-table td:first-child,
-.context-table td:first-child,
-.signature-table td:first-child {{
-width: 25%;
-font-weight: bold;
-background-color: #f9f9f9;
-}}
-.status-pass {{ color: #2e7d32; font-weight: bold; }}
-.status-fail {{ color: #d32f2f; font-weight: bold; }}
-.risk {{ color: #d32f2f; font-weight: bold; }}
-.chart-container {{
-text-align: center;
-margin: 25px 0;
-page-break-inside: avoid;
-}}
-.chart-title {{
-font-weight: bold;
-margin-top: 8px;
-font-size: 11pt;
-}}
-ol {{
-padding-left: 20px;
-margin: 10px 0;
-}}
-ul {{
-padding-left: 20px;
-margin: 10px 0;
-}}
-li {{
-margin-bottom: 5px;
-}}
-@media print {{
-body {{
-padding: 15px;
--webkit-print-color-adjust: exact;
-print-color-adjust: exact;
-}}
-.chart-container img {{
-max-width: 100% !important;
-height: auto !important;
-}}
-table {{
-page-break-inside: avoid;
-}}
-h2, h3 {{
-page-break-after: avoid;
-}}
-}}
-@page {{
-size: A4;
-margin: 15mm;
-}}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{escape_html(data['report_title'])}</title>
+    <script src="https://cdn.plotly.com/plotly-latest.min.js"></script>
+    <style>
+        body {{
+            font-family: Calibri Light, 'Segoe UI', sans-serif;
+            font-size: 13pt;
+            line-height: 1.5;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #000;
+            background-color: #f9f9f9;
+        }}
+        h1 {{
+            text-align: center;
+            font-size: 16pt;
+            font-weight: bold;
+            margin-bottom: 25px;
+            margin-top: 0;
+            color: #2c3e50;
+        }}
+        h2 {{
+            font-size: 14pt;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 3px solid #3498db;
+            color: #2c3e50;
+        }}
+        h3 {{
+            font-size: 13pt;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            color: #34495e;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0 20px 0;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        th, td {{
+            border: 1px solid #ddd;
+            padding: 10px 12px;
+            text-align: left;
+            vertical-align: top;
+        }}
+        th {{
+            background-color: #f2f2f2;
+            font-weight: bold;
+            color: #2c3e50;
+        }}
+        tr:hover {{
+            background-color: #f5f5f5;
+        }}
+        .info-table td:first-child,
+        .summary-table td:first-child,
+        .context-table td:first-child,
+        .signature-table td:first-child {{
+            width: 25%;
+            font-weight: bold;
+            background-color: #e8f4f8;
+        }}
+        .status-pass {{ 
+            color: #2e7d32; 
+            font-weight: bold;
+            background-color: #e8f5e9;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }}
+        .status-fail {{ 
+            color: #d32f2f; 
+            font-weight: bold;
+            background-color: #ffebee;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }}
+        .risk {{ 
+            color: #d32f2f; 
+            font-weight: bold;
+            background-color: #ffebee;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }}
+        .chart-container {{
+            text-align: center;
+            margin: 30px 0;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        .chart-title {{
+            font-weight: bold;
+            margin-top: 10px;
+            font-size: 11pt;
+            color: #555;
+        }}
+        ol, ul {{
+            padding-left: 25px;
+            margin: 12px 0;
+        }}
+        li {{
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }}
+        @media print {{
+            body {{
+                padding: 15px;
+                background-color: #fff;
+            }}
+            .chart-container {{
+                page-break-inside: avoid;
+            }}
+            table {{
+                page-break-inside: avoid;
+            }}
+            h2, h3 {{
+                page-break-after: avoid;
+            }}
+        }}
+        @page {{
+            size: A4;
+            margin: 15mm;
+        }}
+    </style>
 </head>
 <body>
-<h1>{escape_html(data['report_title'])}</h1>
-<table class="info-table">
-<tr><td>Проект:</td><td>{escape_html(data['project'])}</td></tr>
-<tr><td>Тип приложения:</td><td>{escape_html(data['app_type'])}</td></tr>
-<tr><td>Версия приложения:</td><td>{escape_html(data['version'])}</td></tr>
-<tr><td>Период тестирования:</td><td>{escape_html(data['test_period'])}</td></tr>
-<tr><td>Дата формирования отчёта:</td><td>{escape_html(data['report_date'])}</td></tr>
-<tr><td>QA-инженер:</td><td>{escape_html(data['engineer'])}</td></tr>
-</table>
-<h2>1. КРАТКОЕ РЕЗЮМЕ</h2>
-<table class="summary-table">
-<tr><td>Статус релиза:</td><td>{escape_html(data['release_status'])}</td></tr>
-<tr><td>Критические дефекты (S1):</td><td>{data['s1']}</td></tr>
-<tr><td>Мажорные дефекты (S2):</td><td>{data['s2']}</td></tr>
-<tr><td>Всего тест-кейсов:</td><td>{data['total_tc']}</td></tr>
-<tr><td>Успешно (Pass):</td><td class="status-pass">{data['pass']} ({pass_pct:.1f}%)</td></tr>
-<tr><td>Упали (Fail):</td><td class="status-fail">{data['fail']} ({fail_pct:.1f}%)</td></tr>
-<tr><td>Основной риск:</td><td class="risk">{escape_html(data['risk'])}</td></tr>
-<tr><td>Рекомендация:</td><td>{escape_html(data['recommendation'])}</td></tr>
-</table>
-<div class="chart-container">
-<img src="data:image/png;base64,{chart1}" alt="Распределение результатов тест-кейсов" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
-<div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
-</div>
-<div class="chart-container">
-<img src="data:image/png;base64,{chart2}" alt="Дефекты по уровню серьёзности" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
-<div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
-</div>
-<h2>2. КОНТЕКСТ ТЕСТИРОВАНИЯ</h2>
-<table class="context-table">
-<tr><td>Устройство / Браузер:</td><td>{escape_html(data['device_browser'])}</td></tr>
-<tr><td>ОС / Платформа:</td><td>{escape_html(data['os_platform'])}</td></tr>
-<tr><td>Сборка / Версия:</td><td>{escape_html(data['build'])}</td></tr>
-<tr><td>Стенд:</td><td>Тестовое окружение (адрес: {escape_html(data['env_url'])})</td></tr>
-<tr><td>Инструменты:</td><td>{escape_html(data['tools'])}</td></tr>
-<tr><td>Методология:</td><td>{escape_html(data['methodology'])}</td></tr>
-</table>
+    <h1>{escape_html(data['report_title'])}</h1>
+    
+    <table class="info-table">
+        <tr><td>Проект:</td><td>{escape_html(data['project'])}</td></tr>
+        <tr><td>Тип приложения:</td><td>{escape_html(data['app_type'])}</td></tr>
+        <tr><td>Версия приложения:</td><td>{escape_html(data['version'])}</td></tr>
+        <tr><td>Период тестирования:</td><td>{escape_html(data['test_period'])}</td></tr>
+        <tr><td>Дата формирования отчёта:</td><td>{escape_html(data['report_date'])}</td></tr>
+        <tr><td>QA-инженер:</td><td>{escape_html(data['engineer'])}</td></tr>
+    </table>
+    
+    <h2>1. КРАТКОЕ РЕЗЮМЕ</h2>
+    <table class="summary-table">
+        <tr><td>Статус релиза:</td><td>{escape_html(data['release_status'])}</td></tr>
+        <tr><td>Критические дефекты (S1):</td><td>{data['s1']}</td></tr>
+        <tr><td>Мажорные дефекты (S2):</td><td>{data['s2']}</td></tr>
+        <tr><td>Всего тест-кейсов:</td><td>{data['total_tc']}</td></tr>
+        <tr><td>Успешно (Pass):</td><td class="status-pass">{data['pass']} ({pass_pct:.1f}%)</td></tr>
+        <tr><td>Упали (Fail):</td><td class="status-fail">{data['fail']} ({fail_pct:.1f}%)</td></tr>
+        <tr><td>Основной риск:</td><td class="risk">{escape_html(data['risk'])}</td></tr>
+        <tr><td>Рекомендация:</td><td>{escape_html(data['recommendation'])}</td></tr>
+    </table>
+    
+    <div class="chart-container">
+        {chart1_html}
+    </div>
+    
+    <div class="chart-container">
+        {chart2_html}
+    </div>
+    
+    <h2>2. КОНТЕКСТ ТЕСТИРОВАНИЯ</h2>
+    <table class="context-table">
+        <tr><td>Устройство / Браузер:</td><td>{escape_html(data['device_browser'])}</td></tr>
+        <tr><td>ОС / Платформа:</td><td>{escape_html(data['os_platform'])}</td></tr>
+        <tr><td>Сборка / Версия:</td><td>{escape_html(data['build'])}</td></tr>
+        <tr><td>Стенд:</td><td>Тестовое окружение (адрес: {escape_html(data['env_url'])})</td></tr>
+        <tr><td>Инструменты:</td><td>{escape_html(data['tools'])}</td></tr>
+        <tr><td>Методология:</td><td>{escape_html(data['methodology'])}</td></tr>
+    </table>
 """
     
     # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
     html += "<h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>"
     for idx, module_info in enumerate(module_data_list):
         html += f"<h3>3.{idx+1}. {escape_html(module_info['title'])}</h3>"
-        # Исправленные ширины колонок: Сценарий увеличен до 45%, Комментарий уменьшен до 28%
         html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 45%;">Сценарий</th><th style="width: 12%;">Статус</th><th style="width: 28%;">Комментарий</th></tr>'
         df = module_info['df']
         if not df.empty and len(df.columns) >= 4:
             for _, row in df.iterrows():
-                # Определяем CSS-класс для цветового выделения статуса
                 status_class = "status-pass" if str(row[2]).upper() == "PASS" else "status-fail" if str(row[2]).upper() == "FAIL" else ""
                 html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td class='{status_class}'>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td></tr>"
         else:
             html += "<tr><td colspan='4' style='text-align:center'>Нет данных</td></tr>"
         html += "</table>"
     
-    # Дефекты
+    # === РАЗДЕЛ 4: АНАЛИЗ ДЕФЕКТОВ ===
     html += "<h2>4. АНАЛИЗ ДЕФЕКТОВ</h2>"
     html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 15%;">Модуль</th><th>Заголовок</th><th style="width: 20%;">Серьёзность</th><th style="width: 15%;">Статус</th></tr>'
-    if not defects_df.empty and len(defects_df.columns) >= 5:
-        for _, row in defects_df.iterrows():
+    if not defects.empty and len(defects.columns) >= 5:
+        for _, row in defects.iterrows():
             html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td><td>{escape_html(row[4])}</td></tr>"
     else:
         html += "<tr><td colspan='5' style='text-align:center'>Нет данных</td></tr>"
     html += "</table>"
     
-    # Последствия
+    # === РАЗДЕЛ 5: ПОСЛЕДСТВИЯ ===
     html += f"<p><strong>Последствия:</strong> {format_multiline_html(data['consequences'])}</p>"
     
-    # Ограничения (нумерованный список!)
+    # === РАЗДЕЛ 6: ОГРАНИЧЕНИЯ ===
     html += "<h2>5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ</h2><ol>"
     for line in data['limitations'].split('\n'):
         if line.strip():
             html += f"<li>{escape_html(line.strip())}</li>"
     html += "</ol>"
     
-    # Вывод и рекомендации
+    # === РАЗДЕЛ 7: ВЫВОД И РЕКОМЕНДАЦИИ ===
     html += f"""
-<h2>6. ВЫВОД И РЕКОМЕНДАЦИИ</h2>
-<p><strong>Вывод:</strong> {escape_html(data['conclusion'])}</p>
-<p><strong>Рекомендации:</strong></p>
-<ul>
-"""
+    <h2>6. ВЫВОД И РЕКОМЕНДАЦИИ</h2>
+    <p><strong>Вывод:</strong> {escape_html(data['conclusion'])}</p>
+    <p><strong>Рекомендации:</strong></p>
+    <ul>
+    """
     for line in data['recommendations_detailed'].split('\n'):
         if line.strip():
             html += f"<li>{escape_html(line.strip())}</li>"
     html += "</ul>"
     
-    # Подпись
+    # === РАЗДЕЛ 8: ПОДПИСЬ ===
     html += f"""
-<h2>7. ПОДПИСЬ</h2>
-<table class="signature-table">
-<tr><td>Роль:</td><td>{escape_html(data['role'])}</td></tr>
-<tr><td>ФИО:</td><td>{escape_html(data['fullname'])}</td></tr>
-<tr><td>Дата:</td><td>{escape_html(data['signature_date'])}</td></tr>
-</table>
+    <h2>7. ПОДПИСЬ</h2>
+    <table class="signature-table">
+        <tr><td>Роль:</td><td>{escape_html(data['role'])}</td></tr>
+        <tr><td>ФИО:</td><td>{escape_html(data['fullname'])}</td></tr>
+        <tr><td>Дата:</td><td>{escape_html(data['signature_date'])}</td></tr>
+    </table>
 </body>
 </html>"""
     
@@ -626,7 +742,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     context_fill = PatternFill(start_color="FF70AD47", end_color="FF70AD47", fill_type="solid")
     defects_fill = PatternFill(start_color="FF7030A0", end_color="FF7030A0", fill_type="solid")
     notes_fill = PatternFill(start_color="FFFFC000", end_color="FFFFC000", fill_type="solid")
-    signature_fill = PatternFill(start_color="FF333333", end_color="FF333333", fill_type="solid")  # Было "333333" → "FF333333"
+    signature_fill = PatternFill(start_color="FF333333", end_color="FF333333", fill_type="solid")
     
     pass_fill = PatternFill(start_color="FFC6EFCE", end_color="FFC6EFCE", fill_type="solid")
     fail_fill = PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid")
@@ -901,8 +1017,8 @@ default_defects = pd.DataFrame([
 ], columns=["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"])
 
 # === ИНТЕРФЕЙС STREAMLIT (структура как в отчёте из PDF) ===
-st.set_page_config(page_title="Генератор отчёта как в образце", layout="wide")
-st.title("📄 Генератор отчёта о тестировании")
+st.set_page_config(page_title="Генератор отчёта", layout="wide")
+st.title("📄 Отчёт о тестировании")
 
 with st.form("main_form"):
     # === ЗАГОЛОВОК ОТЧЁТА ===
