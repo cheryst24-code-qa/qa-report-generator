@@ -16,57 +16,6 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-# === ФУНКЦИИ ДЛЯ РАБОТЫ С ЧЕРНОВИКАМИ (НОВЫЕ, БЕЗОПАСНЫЕ) ===
-import json
-from datetime import datetime
-
-def save_draft(data, module_data_list, defects_df):
-    """Сохраняет данные формы в структуру для черновика"""
-    draft = {
-        "saved_at": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
-        "data": data,
-        "modules": [
-            {
-                "title": m["title"],
-                "df": m["df"].to_dict(orient="records") if not m["df"].empty else []
-            }
-            for m in module_data_list
-        ],
-        "defects": defects_df.to_dict(orient="records") if not defects_df.empty else []
-    }
-    return json.dumps(draft, ensure_ascii=False, indent=2)
-
-def load_draft(json_content):
-    """Восстанавливает данные из черновика"""
-    try:
-        draft = json.loads(json_content)
-        
-        # Восстанавливаем данные формы
-        data = draft.get("data", {})
-        
-        # Восстанавливаем дефекты
-        defects_records = draft.get("defects", [])
-        defects_df = pd.DataFrame(
-            defects_records,
-            columns=["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"]
-        ) if defects_records else pd.DataFrame(columns=["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"])
-        
-        # Восстанавливаем модули
-        modules = []
-        for mod in draft.get("modules", []):
-            df_records = mod.get("df", [])
-            df = pd.DataFrame(
-                df_records,
-                columns=["ID", "Сценарий", "Статус", "Комментарий"]
-            ) if df_records else pd.DataFrame(columns=["ID", "Сценарий", "Статус", "Комментарий"])
-            modules.append({"title": mod["title"], "df": df})
-        
-        return data, modules, defects_df, draft.get("saved_at", "неизвестно")
-    except Exception as e:
-        st.error(f"❌ Ошибка загрузки черновика: {str(e)}")
-        return None, None, None, None
-
-# === ОРИГИНАЛЬНЫЕ ФУНКЦИИ ГЕНЕРАЦИИ ОТЧЁТОВ (БЕЗ ИЗМЕНЕНИЙ) ===
 def set_col_width(col, width_twips):
     """Устанавливает точную ширину колонки в таблице Word"""
     for cell in col.cells:
@@ -88,18 +37,18 @@ def add_table_from_df(doc, df, header_text=None):
             doc.add_paragraph("Нет данных для отображения")
         doc.add_paragraph().paragraph_format.space_after = Pt(6)
         return
-    
+
     # Заголовок таблицы (опционально)
     if header_text:
         p = doc.add_paragraph()
         p.add_run(header_text).bold = True
         p.paragraph_format.space_after = Pt(6)
-    
+
     # Создание таблицы
     table = doc.add_table(rows=1, cols=len(df.columns))
     table.style = 'Table Grid'
     table.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
-    
+
     # Настройка ширины колонок (25%/75% как в образце)
     total_width = Inches(6.5)
     num_cols = len(df.columns)
@@ -111,7 +60,7 @@ def add_table_from_df(doc, df, header_text=None):
         set_col_width(table.columns[0], first_width_twips)
         for i in range(1, num_cols):
             set_col_width(table.columns[i], other_width_twips)
-    
+
     # Заголовки колонок
     hdr_cells = table.rows[0].cells
     for i, column in enumerate(df.columns):
@@ -122,7 +71,7 @@ def add_table_from_df(doc, df, header_text=None):
                 run.font.size = Pt(10)
             paragraph.paragraph_format.space_after = Pt(2)
             paragraph.paragraph_format.space_before = Pt(2)
-    
+
     # Данные таблицы
     for _, row in df.iterrows():
         row_cells = table.add_row().cells
@@ -135,7 +84,7 @@ def add_table_from_df(doc, df, header_text=None):
                     run.font.size = Pt(9)
                 paragraph.paragraph_format.space_after = Pt(2)
                 paragraph.paragraph_format.space_before = Pt(2)
-    
+
     doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
 def generate_docx(data, module_data_list, defects_df):
@@ -161,7 +110,6 @@ def generate_docx(data, module_data_list, defects_df):
     
     info_table = doc.add_table(rows=6, cols=2)
     info_table.style = 'Table Grid'
-    
     set_col_width(info_table.columns[0], first_col_width_twips)
     set_col_width(info_table.columns[1], second_col_width_twips)
     
@@ -173,7 +121,6 @@ def generate_docx(data, module_data_list, defects_df):
         ('Дата формирования отчёта:', data["report_date"]),
         ('QA-инженер:', data["engineer"])
     ]
-    
     for i, (label, value) in enumerate(fields):
         cell1 = info_table.cell(i, 0)
         cell1.text = label
@@ -189,10 +136,8 @@ def generate_docx(data, module_data_list, defects_df):
     
     # === РАЗДЕЛ 1: КРАТКОЕ РЕЗЮМЕ ===
     doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
-    
     summary_table = doc.add_table(rows=8, cols=2)
     summary_table.style = 'Table Grid'
-    
     set_col_width(summary_table.columns[0], first_col_width_twips)
     set_col_width(summary_table.columns[1], second_col_width_twips)
     
@@ -210,7 +155,6 @@ def generate_docx(data, module_data_list, defects_df):
         ('Основной риск:', data['risk']),
         ('Рекомендация:', data['recommendation'])
     ]
-    
     for i, (label, value) in enumerate(summary_fields):
         cell1 = summary_table.cell(i, 0)
         cell1.text = label
@@ -254,7 +198,6 @@ def generate_docx(data, module_data_list, defects_df):
     plt.title('Рис. 2. Дефекты по уровню серьёзности')
     plt.ylabel('Количество')
     plt.ylim(0, max(data['s1'], data['s2'], 1) * 1.3)
-    
     for bar in bars:
         h = bar.get_height()
         if h > 0:
@@ -265,9 +208,7 @@ def generate_docx(data, module_data_list, defects_df):
                 ha='center',
                 va='bottom'
             )
-    
     plt.grid(axis='y', alpha=0.3, linestyle='--')
-    
     buf = io.BytesIO()
     plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
     buf.seek(0)
@@ -278,10 +219,8 @@ def generate_docx(data, module_data_list, defects_df):
     
     # === РАЗДЕЛ 2: КОНТЕКСТ ТЕСТИРОВАНИЯ ===
     doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
-    
     context_table = doc.add_table(rows=6, cols=2)
     context_table.style = 'Table Grid'
-    
     set_col_width(context_table.columns[0], first_col_width_twips)
     set_col_width(context_table.columns[1], second_col_width_twips)
     
@@ -293,7 +232,6 @@ def generate_docx(data, module_data_list, defects_df):
         ('Инструменты:', data['tools']),
         ('Методология:', data['methodology'])
     ]
-    
     for i, (label, value) in enumerate(context_fields):
         cell1 = context_table.cell(i, 0)
         cell1.text = label
@@ -309,7 +247,6 @@ def generate_docx(data, module_data_list, defects_df):
     
     # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
     doc.add_heading('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', 1)
-    
     for idx, module_info in enumerate(module_data_list):
         title = module_info['title']
         df = module_info['df']
@@ -328,7 +265,6 @@ def generate_docx(data, module_data_list, defects_df):
     
     # === РАЗДЕЛ 5: ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ (нумерованный список!) ===
     doc.add_heading('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', 1)
-    
     # ВАЖНО: в образце используется нумерованный список (1., 2., 3.), а не маркированный
     for line in data['limitations'].split('\n'):
         if line.strip():
@@ -340,12 +276,10 @@ def generate_docx(data, module_data_list, defects_df):
             else:
                 p = doc.add_paragraph(clean_line)
             p.paragraph_format.space_after = Pt(2)
-    
     doc.add_paragraph().paragraph_format.space_after = Pt(6)
     
     # === РАЗДЕЛ 6: ВЫВОД И РЕКОМЕНДАЦИИ ===
     doc.add_heading('6. ВЫВОД И РЕКОМЕНДАЦИИ', 1)
-    
     # Вывод: текст сразу после слова "Вывод:" без переноса строки
     p = doc.add_paragraph()
     p.add_run('Вывод: ').bold = True
@@ -356,7 +290,6 @@ def generate_docx(data, module_data_list, defects_df):
     p = doc.add_paragraph()
     p.add_run('Рекомендации:').bold = True
     doc.add_paragraph().paragraph_format.space_after = Pt(2)
-    
     for line in data['recommendations_detailed'].split('\n'):
         if line.strip():
             p = doc.add_paragraph(line.strip(), style='List Bullet')
@@ -365,10 +298,8 @@ def generate_docx(data, module_data_list, defects_df):
     
     # === РАЗДЕЛ 7: ПОДПИСЬ (чистая таблица 3×2 без артефактов) ===
     doc.add_heading('7. ПОДПИСЬ', 1)
-    
     signature_table = doc.add_table(rows=3, cols=2)
     signature_table.style = 'Table Grid'
-    
     set_col_width(signature_table.columns[0], first_col_width_twips)
     set_col_width(signature_table.columns[1], second_col_width_twips)
     
@@ -377,7 +308,6 @@ def generate_docx(data, module_data_list, defects_df):
         ('ФИО :', data['fullname']),
         ('Дата :', data['signature_date'])
     ]
-    
     for i, (label, value) in enumerate(signature_fields):
         cell1 = signature_table.cell(i, 0)
         cell1.text = label
@@ -421,7 +351,6 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
     plt.title('Рис. 2. Дефекты по уровню серьёзности', fontsize=10, pad=15)
     plt.ylabel('Количество', fontsize=11)
     plt.ylim(0, max(s1_count, s2_count, 1) * 1.3)
-    
     for bar in bars:
         h = bar.get_height()
         if h > 0:
@@ -434,9 +363,7 @@ def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
                 fontsize=11,
                 fontweight='bold'
             )
-    
     plt.grid(axis='y', alpha=0.3, linestyle='--')
-    
     buf2 = io.BytesIO()
     plt.savefig(buf2, format='png', dpi=150, bbox_inches='tight', facecolor='white')
     plt.close()
@@ -470,7 +397,6 @@ def format_multiline_html(text):
 def generate_html_report(data, module_data_list, defects_df):
     """Генерирует HTML-отчёт в соответствии с образцом"""
     chart1, chart2 = generate_chart_base64(data['pass'], data['fail'], data['s1'], data['s2'])
-    
     total = data['total_tc']
     pass_pct = data['pass'] / total * 100 if total > 0 else 0
     fail_pct = 100 - pass_pct
@@ -583,7 +509,6 @@ margin: 15mm;
 </head>
 <body>
 <h1>{escape_html(data['report_title'])}</h1>
-
 <table class="info-table">
 <tr><td>Проект:</td><td>{escape_html(data['project'])}</td></tr>
 <tr><td>Тип приложения:</td><td>{escape_html(data['app_type'])}</td></tr>
@@ -592,9 +517,7 @@ margin: 15mm;
 <tr><td>Дата формирования отчёта:</td><td>{escape_html(data['report_date'])}</td></tr>
 <tr><td>QA-инженер:</td><td>{escape_html(data['engineer'])}</td></tr>
 </table>
-
 <h2>1. КРАТКОЕ РЕЗЮМЕ</h2>
-
 <table class="summary-table">
 <tr><td>Статус релиза:</td><td>{escape_html(data['release_status'])}</td></tr>
 <tr><td>Критические дефекты (S1):</td><td>{data['s1']}</td></tr>
@@ -605,19 +528,15 @@ margin: 15mm;
 <tr><td>Основной риск:</td><td class="risk">{escape_html(data['risk'])}</td></tr>
 <tr><td>Рекомендация:</td><td>{escape_html(data['recommendation'])}</td></tr>
 </table>
-
 <div class="chart-container">
 <img src="data:image/png;base64,{chart1}" alt="Распределение результатов тест-кейсов" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
 <div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
 </div>
-
 <div class="chart-container">
 <img src="data:image/png;base64,{chart2}" alt="Дефекты по уровню серьёзности" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
 <div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
 </div>
-
 <h2>2. КОНТЕКСТ ТЕСТИРОВАНИЯ</h2>
-
 <table class="context-table">
 <tr><td>Устройство / Браузер:</td><td>{escape_html(data['device_browser'])}</td></tr>
 <tr><td>ОС / Платформа:</td><td>{escape_html(data['os_platform'])}</td></tr>
@@ -630,7 +549,6 @@ margin: 15mm;
     
     # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
     html += "<h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>"
-    
     for idx, module_info in enumerate(module_data_list):
         html += f"<h3>3.{idx+1}. {escape_html(module_info['title'])}</h3>"
         # Исправленные ширины колонок: Сценарий увеличен до 45%, Комментарий уменьшен до 28%
@@ -709,6 +627,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
     defects_fill = PatternFill(start_color="FF7030A0", end_color="FF7030A0", fill_type="solid")
     notes_fill = PatternFill(start_color="FFFFC000", end_color="FFFFC000", fill_type="solid")
     signature_fill = PatternFill(start_color="FF333333", end_color="FF333333", fill_type="solid")
+    
     pass_fill = PatternFill(start_color="FFC6EFCE", end_color="FFC6EFCE", fill_type="solid")
     fail_fill = PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid")
     
@@ -755,7 +674,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ["Статус релиза", data["release_status"]],
         ["Рекомендация", data["recommendation"]],
     ]
-    
     for label, value in summary_rows:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
         ws.cell(row=row, column=1, value=label).border = thin_border
@@ -765,7 +683,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell_value.border = thin_border
         cell_value.alignment = wrap_left
         row += 1
-    
     row += 1
     
     # Контекст тестирования
@@ -788,7 +705,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ["Тест-инженер", data["engineer"]],
         ["Дата формирования", data["report_date"]],
     ]
-    
     for label, value in context_rows:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
         ws.cell(row=row, column=1, value=label).border = thin_border
@@ -798,7 +714,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell_value.border = thin_border
         cell_value.alignment = wrap_left
         row += 1
-    
     row += 1
     
     # Результаты по модулям
@@ -831,6 +746,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 ws.cell(row=row, column=2, value=test_row[0]).alignment = wrap_center
                 ws.cell(row=row, column=3, value=test_row[1]).border = thin_border
                 ws.cell(row=row, column=3, value=test_row[1]).alignment = wrap_left
+                
                 status_cell = ws.cell(row=row, column=4, value=test_row[2])
                 status_cell.border = thin_border
                 status_cell.alignment = wrap_center
@@ -840,6 +756,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 elif str(test_row[2]).upper() == "FAIL":
                     status_cell.fill = fail_fill
                     status_cell.font = Font(color="9C0006", bold=True)
+                
                 ws.cell(row=row, column=5, value=test_row[3]).border = thin_border
                 ws.cell(row=row, column=5, value=test_row[3]).alignment = wrap_left
                 row += 1
@@ -849,7 +766,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
             cell.alignment = wrap_center
             cell.border = thin_border
             row += 1
-    
     row += 1
     
     # Анализ дефектов
@@ -884,7 +800,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         cell.alignment = wrap_center
         cell.border = thin_border
         row += 1
-    
     row += 1
     
     # Ограничения, вывод, рекомендации
@@ -893,7 +808,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ("💡 ВЫВОД", data["conclusion"]),
         ("📌 РЕКОМЕНДАЦИИ", data["recommendations_detailed"]),
     ]
-    
     for title, content in sections:
         ws.merge_cells(f'A{row}:E{row}')
         cell = ws.cell(row=row, column=1, value=title)
@@ -903,7 +817,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         for col in range(1, 6):
             ws.cell(row=row, column=col).border = thin_border
         row += 1
-        
         for line in content.split('\n'):
             if line.strip():
                 ws.merge_cells(f'A{row}:E{row}')
@@ -911,8 +824,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
                 cell.alignment = wrap_left
                 cell.border = thin_border
                 row += 1
-    
-    row += 1
+        row += 1
     
     # Подпись
     ws.merge_cells(f'A{row}:E{row}')
@@ -929,7 +841,6 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ["ФИО", data["fullname"]],
         ["Дата", data["signature_date"]],
     ]
-    
     for label, value in signature_rows:
         ws.cell(row=row, column=1, value=label).font = Font(bold=True)
         ws.cell(row=row, column=1, value=label).border = thin_border
@@ -991,162 +902,60 @@ default_defects = pd.DataFrame([
 
 # === ИНТЕРФЕЙС STREAMLIT (структура как в отчёте из PDF) ===
 st.set_page_config(page_title="Генератор отчёта", layout="wide")
-
-# === ЗАГРУЗКА ЧЕРНОВИКА (ВНЕ ФОРМЫ!) ===
 st.title("📄 Отчёт о тестировании")
-
-uploaded_file = st.file_uploader(
-    "⬆️ Загрузить черновик (.json)",
-    type=["json"],
-    label_visibility="visible",
-    key="draft_uploader_outside_form"
-)
-if uploaded_file is not None:
-    content = uploaded_file.read().decode("utf-8")
-    restored_data, restored_modules, restored_defects, saved_at = load_draft(content)
-    if restored_data is not None:
-        st.session_state.draft_data = restored_data
-        st.session_state.draft_modules = restored_modules
-        st.session_state.draft_defects = restored_defects
-        st.session_state.draft_saved_at = saved_at
-        st.success(f"✅ Черновик загружен! Сохранён: {saved_at}")
-        st.rerun()
-
-# === ПОДГОТОВКА ДАННЫХ ДЛЯ ФОРМЫ ===
-if "draft_data" in st.session_state and st.session_state.draft_data is not None:
-    draft_data = st.session_state.draft_data
-    draft_modules = st.session_state.draft_modules
-    draft_defects = st.session_state.draft_defects
-    draft_saved_at = st.session_state.draft_saved_at
-    
-    # Подставляем значения из черновика
-    report_title_val = draft_data.get("report_title", "Отчёт о тестировании мобильного приложения Лемана ПРО")
-    project_val = draft_data.get("project", "Лемана ПРО")
-    app_type_val = draft_data.get("app_type", "Мобильное")
-    version_val = draft_data.get("version", "241006.001")
-    test_period_val = draft_data.get("test_period", "29–30 ноября 2025 г.")
-    report_date_val = draft_data.get("report_date", "30 ноября 2025 г.")
-    engineer_val = draft_data.get("engineer", "Черкасов Игорь")
-    
-    release_status_val = draft_data.get("release_status", "НЕ РЕКОМЕНДОВАН К ВЫПУСКУ")
-    s1_val = draft_data.get("s1", 2)
-    s2_val = draft_data.get("s2", 1)
-    total_tc_val = draft_data.get("total_tc", 72)
-    pass_tc_val = draft_data.get("pass", 69)
-    fail_tc_val = draft_data.get("fail", 3)
-    risk_val = draft_data.get("risk", "Уязвимости безопасности позволяют нарушителю получить доступ к данным пользователей и вызвать отказ в обслуживании.")
-    recommendation_val = draft_data.get("recommendation", "Релиз возможен только после устранения всех S1/S2 дефектов и повторного тестирования.")
-    
-    device_browser_val = draft_data.get("device_browser", "Xiaomi 12")
-    os_platform_val = draft_data.get("os_platform", "Android 15")
-    build_val = draft_data.get("build", "lemanna-pro_241006.001.apk")
-    env_url_val = draft_data.get("env_url", "https://test.lemanna.pro")
-    tools_val = draft_data.get("tools", "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)")
-    methodology_val = draft_data.get("methodology", "Ручное функциональное тестирование + проверка безопасности")
-    
-    consequences_val = draft_data.get("consequences", "- S1 дефекты позволяют злоумышленнику получить данные других пользователей или вывести приложение из строя.\n- S2 дефект снижает юзабилити: пользователи не найдут товар при опечатке.")
-    limitations_val = draft_data.get("limitations", "1. Не тестировалась оплата через Apple Pay (устройство Android).\n2. Не проверена синхронизация с 1С (нет доступа к интеграционному стенду).\n3. Не проведено нагрузочное тестирование (ограничение по времени).")
-    conclusion_val = draft_data.get("conclusion", "Сборка 241006.001 содержит критические уязвимости безопасности, делающие её непригодной для выпуска в production. Наличие S1 дефектов нарушает базовые принципы защиты данных пользователей.")
-    recommendations_detailed_val = draft_data.get("recommendations_detailed", "Немедленно исправить уязвимости BUG-SEC-001 и BUG-SEC-002.\nРеализовать fuzzy search для повышения юзабилити (BUG-SEARCH-001).\nПровести повторное тестирование после фиксов с фокусом на:\n- Повторную проверку полей ввода на инъекции\n- Тестирование сценариев поиска с опечатками\n- Настроить автоматизированную проверку безопасности (например, OWASP ZAP) в CI/CD.")
-    
-    role_val = draft_data.get("role", "QA-инженер")
-    fullname_val = draft_data.get("fullname", "Черкасов Игорь")
-    signature_date_val = draft_data.get("signature_date", "30.11.2025")
-    
-    # Очищаем session_state после применения
-    del st.session_state.draft_data
-    del st.session_state.draft_modules
-    del st.session_state.draft_defects
-    del st.session_state.draft_saved_at
-else:
-    # Значения по умолчанию
-    report_title_val = "Отчёт о тестировании мобильного приложения Лемана ПРО"
-    project_val = "Лемана ПРО"
-    app_type_val = "Мобильное"
-    version_val = "241006.001"
-    test_period_val = "29–30 ноября 2025 г."
-    report_date_val = "30 ноября 2025 г."
-    engineer_val = "Черкасов Игорь"
-    
-    release_status_val = "НЕ РЕКОМЕНДОВАН К ВЫПУСКУ"
-    s1_val = 2
-    s2_val = 1
-    total_tc_val = 72
-    pass_tc_val = 69
-    fail_tc_val = 3
-    risk_val = "Уязвимости безопасности позволяют нарушителю получить доступ к данным пользователей и вызвать отказ в обслуживании."
-    recommendation_val = "Релиз возможен только после устранения всех S1/S2 дефектов и повторного тестирования."
-    
-    device_browser_val = "Xiaomi 12"
-    os_platform_val = "Android 15"
-    build_val = "lemanna-pro_241006.001.apk"
-    env_url_val = "https://test.lemanna.pro"
-    tools_val = "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)"
-    methodology_val = "Ручное функциональное тестирование + проверка безопасности"
-    
-    consequences_val = "- S1 дефекты позволяют злоумышленнику получить данные других пользователей или вывести приложение из строя.\n- S2 дефект снижает юзабилити: пользователи не найдут товар при опечатке."
-    limitations_val = "1. Не тестировалась оплата через Apple Pay (устройство Android).\n2. Не проверена синхронизация с 1С (нет доступа к интеграционному стенду).\n3. Не проведено нагрузочное тестирование (ограничение по времени)."
-    conclusion_val = "Сборка 241006.001 содержит критические уязвимости безопасности, делающие её непригодной для выпуска в production. Наличие S1 дефектов нарушает базовые принципы защиты данных пользователей."
-    recommendations_detailed_val = "Немедленно исправить уязвимости BUG-SEC-001 и BUG-SEC-002.\nРеализовать fuzzy search для повышения юзабилити (BUG-SEARCH-001).\nПровести повторное тестирование после фиксов с фокусом на:\n- Повторную проверку полей ввода на инъекции\n- Тестирование сценариев поиска с опечатками\n- Настроить автоматизированную проверку безопасности (например, OWASP ZAP) в CI/CD."
-    
-    role_val = "QA-инженер"
-    fullname_val = "Черкасов Игорь"
-    signature_date_val = "30.11.2025"
 
 with st.form("main_form"):
     # === ЗАГОЛОВОК ОТЧЁТА ===
     report_title = st.text_input(
         "Название отчёта",
-        report_title_val
+        "Отчёт о тестировании мобильного приложения Лемана ПРО"
     )
     
     # === ОСНОВНАЯ ИНФОРМАЦИЯ (отдельная секция ДО раздела 1, как в PDF) ===
     st.subheader("Основная информация")
     col_info1, col_info2 = st.columns(2)
     with col_info1:
-        project = st.text_input("Проект", project_val)
-        app_type = st.selectbox("Тип приложения", ["Мобильное", "Веб-приложение"], 
-                               index=0 if app_type_val == "Мобильное" else 1)
-        version = st.text_input("Версия приложения", version_val)
+        project = st.text_input("Проект", "Лемана ПРО")
+        app_type = st.selectbox("Тип приложения", ["Мобильное", "Веб-приложение"], index=0)
+        version = st.text_input("Версия приложения", "241006.001")
     with col_info2:
-        test_period = st.text_input("Период тестирования", test_period_val)
-        report_date = st.text_input("Дата формирования отчёта", report_date_val)
-        engineer = st.text_input("Тест-инженер", engineer_val)
+        test_period = st.text_input("Период тестирования", "29–30 ноября 2025 г.")
+        report_date = st.text_input("Дата формирования отчёта", "30 ноября 2025 г.")
+        engineer = st.text_input("Тест-инженер", "Черкасов Игорь")
     
     # === РАЗДЕЛ 1: КРАТКОЕ РЕЗЮМЕ (только данные резюме, как в таблице из PDF) ===
     st.header("1. Краткое резюме")
     col1, col2 = st.columns(2)
     with col1:
-        release_status = st.selectbox("Статус релиза", ["НЕ РЕКОМЕНДОВАН К ВЫПУСКУ", "РЕКОМЕНДОВАН К ВЫПУСКУ"], 
-                                     index=["НЕ РЕКОМЕНДОВАН К ВЫПУСКУ", "РЕКОМЕНДОВАН К ВЫПУСКУ"].index(release_status_val))
-        s1 = st.number_input("Критические дефекты (S1)", min_value=0, value=s1_val)
-        s2 = st.number_input("Мажорные дефекты (S2)", min_value=0, value=s2_val)
+        release_status = st.selectbox("Статус релиза", ["НЕ РЕКОМЕНДОВАН К ВЫПУСКУ", "РЕКОМЕНДОВАН К ВЫПУСКУ"], index=0)
+        s1 = st.number_input("Критические дефекты (S1)", min_value=0, value=2)
+        s2 = st.number_input("Мажорные дефекты (S2)", min_value=0, value=1)
     with col2:
-        total_tc = st.number_input("Всего тест-кейсов", min_value=1, value=total_tc_val)
-        pass_tc = st.number_input("Успешно (Pass)", min_value=0, value=pass_tc_val)
-        fail_tc = st.number_input("Упали (Fail)", min_value=0, value=fail_tc_val)
+        total_tc = st.number_input("Всего тест-кейсов", min_value=1, value=72)
+        pass_tc = st.number_input("Успешно (Pass)", min_value=0, value=69)
+        fail_tc = st.number_input("Упали (Fail)", min_value=0, value=3)
     
     # Риски и рекомендации — под таблицами (как в образце)
     risk = st.text_area(
         "Основной риск",
-        risk_val
+        "Уязвимости безопасности позволяют нарушителю получить доступ к данным пользователей и вызвать отказ в обслуживании."
     )
     recommendation = st.text_area(
         "Рекомендация",
-        recommendation_val
+        "Релиз возможен только после устранения всех S1/S2 дефектов и повторного тестирования."
     )
     
     # === РАЗДЕЛ 2: КОНТЕКСТ ТЕСТИРОВАНИЯ ===
     st.header("2. Контекст тестирования")
     col3, col4 = st.columns(2)
     with col3:
-        device_browser = st.text_input("Устройство / Браузер", device_browser_val)
-        os_platform = st.text_input("ОС / Платформа", os_platform_val)
-        build = st.text_input("Сборка / Версия", build_val)
+        device_browser = st.text_input("Устройство / Браузер", "Xiaomi 12")
+        os_platform = st.text_input("ОС / Платформа", "Android 15")
+        build = st.text_input("Сборка / Версия", "lemanna-pro_241006.001.apk")
     with col4:
-        env_url = st.text_input("URL стенда", env_url_val)
-        tools = st.text_input("Инструменты", tools_val)
-        methodology = st.text_input("Методология", methodology_val)
+        env_url = st.text_input("URL стенда", "https://test.lemanna.pro")
+        tools = st.text_input("Инструменты", "Postman (API), Burp Suite (безопасность), Jira (баг-трекинг)")
+        methodology = st.text_input("Методология", "Ручное функциональное тестирование + проверка безопасности")
     
     # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
     st.header("3. Результаты тестирования по модулям")
@@ -1156,11 +965,11 @@ with st.form("main_form"):
         with st.expander(f"Модуль 3.{i+1}", expanded=True):
             title = st.text_input(
                 f"Название модуля 3.{i+1}",
-                value=draft_modules[i]["title"] if "draft_modules" in st.session_state and i < len(draft_modules) else default_modules[i]["title"] if i < len(default_modules) else f"Модуль 3.{i+1}",
+                value=default_modules[i]["title"] if i < len(default_modules) else f"Модуль 3.{i+1}",
                 key=f"title_{i}"
             )
             df_key = f"mod_{i}"
-            default_df = draft_modules[i]["df"] if "draft_modules" in st.session_state and i < len(draft_modules) else default_modules[i]["df"] if i < len(default_modules) else pd.DataFrame(columns=["ID", "Сценарий", "Статус", "Комментарий"])
+            default_df = default_modules[i]["df"] if i < len(default_modules) else pd.DataFrame(columns=["ID", "Сценарий", "Статус", "Комментарий"])
             df = st.data_editor(
                 default_df,
                 num_rows="dynamic",
@@ -1177,7 +986,7 @@ with st.form("main_form"):
     # === РАЗДЕЛ 4: АНАЛИЗ ДЕФЕКТОВ ===
     st.header("4. Анализ дефектов")
     defects = st.data_editor(
-        draft_defects if "draft_defects" in st.session_state else default_defects,
+        default_defects,
         num_rows="dynamic",
         key="defects",
         column_config={
@@ -1190,114 +999,59 @@ with st.form("main_form"):
     )
     consequences = st.text_area(
         "Последствия",
-        consequences_val
+        "- S1 дефекты позволяют злоумышленнику получить данные других пользователей или вывести приложение из строя.\n- S2 дефект снижает юзабилити: пользователи не найдут товар при опечатке."
     )
     
     # === РАЗДЕЛ 5: ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ ===
     st.header("5. Ограничения тестирования")
     limitations = st.text_area(
         "Ограничения тестирования",
-        limitations_val
+        "1. Не тестировалась оплата через Apple Pay (устройство Android).\n2. Не проверена синхронизация с 1С (нет доступа к интеграционному стенду).\n3. Не проведено нагрузочное тестирование (ограничение по времени)."
     )
     
     # === РАЗДЕЛ 6: ВЫВОД И РЕКОМЕНДАЦИИ ===
     st.header("6. Вывод и рекомендации")
     conclusion = st.text_area(
         "Вывод",
-        conclusion_val
+        "Сборка 241006.001 содержит критические уязвимости безопасности, делающие её непригодной для выпуска в production. Наличие S1 дефектов нарушает базовые принципы защиты данных пользователей."
     )
     recommendations_detailed = st.text_area(
         "Рекомендации (подробно)",
-        recommendations_detailed_val
+        "Немедленно исправить уязвимости BUG-SEC-001 и BUG-SEC-002.\nРеализовать fuzzy search для повышения юзабилити (BUG-SEARCH-001).\nПровести повторное тестирование после фиксов с фокусом на:\n- Повторную проверку полей ввода на инъекции\n- Тестирование сценариев поиска с опечатками\n- Настроить автоматизированную проверку безопасности (например, OWASP ZAP) в CI/CD."
     )
     
     # === РАЗДЕЛ 7: ПОДПИСЬ ===
     st.header("7. Подпись")
-    role = st.text_input("Роль", role_val)
-    fullname = st.text_input("ФИО", fullname_val)
-    signature_date = st.text_input("Дата", signature_date_val)
+    role = st.text_input("Роль", "QA-инженер")
+    fullname = st.text_input("ФИО", "Черкасов Игорь")
+    signature_date = st.text_input("Дата", "30.11.2025")
     
-    # === КНОПКИ ФОРМЫ ===
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        save_draft_clicked = st.form_submit_button("💾 Сохранить черновик", type="secondary")
-    with col_btn2:
-        submitted = st.form_submit_button("📥 Создать отчёт", type="primary")
-
-# === ОБРАБОТКА КНОПОК (ВНЕ ФОРМЫ!) ===
-if save_draft_clicked:
-    # Собираем данные из текущей формы
-    data = {
-        "report_title": report_title,
-        "project": project,
-        "app_type": app_type,
-        "version": version,
-        "test_period": test_period,
-        "report_date": report_date,
-        "engineer": engineer,
-        "release_status": release_status,
-        "s1": s1,
-        "s2": s2,
-        "total_tc": total_tc,
-        "pass": pass_tc,
-        "fail": fail_tc,
-        "device_browser": device_browser,
-        "os_platform": os_platform,
-        "build": build,
-        "env_url": env_url.strip(),
-        "tools": tools,
-        "methodology": methodology,
-        "risk": risk,
-        "recommendation": recommendation,
-        "consequences": consequences,
-        "limitations": limitations,
-        "conclusion": conclusion,
-        "recommendations_detailed": recommendations_detailed,
-        "role": role,
-        "fullname": fullname,
-        "signature_date": signature_date,
-    }
-    
-    draft_json = save_draft(data, module_data_list, defects)
-    st.session_state.draft_to_download = draft_json
-    st.session_state.draft_filename = f"черновик_{datetime.now().strftime('%d%m%Y_%H%M%S')}.json"
-    st.success("✅ Черновик подготовлен к скачиванию!")
-    st.rerun()
-
-# Кнопка скачивания черновика (вне формы)
-if "draft_to_download" in st.session_state and st.session_state.draft_to_download is not None:
-    st.download_button(
-        "⬇️ Скачать черновик",
-        st.session_state.draft_to_download,
-        st.session_state.draft_filename,
-        "application/json",
-        use_container_width=True,
-        type="primary"
-    )
-    if st.button("Закрыть", key="close_draft"):
-        del st.session_state.draft_to_download
-        del st.session_state.draft_filename
-        st.rerun()
+    submitted = st.form_submit_button("📥 Создать отчёт", type="primary")
 
 # === ГЕНЕРАЦИЯ ОТЧЁТА ===
 if submitted:
     validation_errors = []
+    
     # 🔴 КРИТИЧЕСКАЯ ВАЛИДАЦИЯ
     if pass_tc + fail_tc != total_tc:
         validation_errors.append(
             f"⚠️ Сумма статусов ({pass_tc} PASS + {fail_tc} FAIL = {pass_tc + fail_tc}) "
             f"не равна общему количеству тест-кейсов ({total_tc})"
         )
+    
     if total_tc <= 0:
         validation_errors.append("❌ Общее количество тест-кейсов должно быть больше 0")
+    
     if s1 < 0 or s2 < 0:
         validation_errors.append("❌ Количество дефектов не может быть отрицательным")
+    
     if not report_title.strip():
         validation_errors.append("❌ Название отчёта не может быть пустым")
+    
     # Проверка обязательных полей
     required_fields = ['project', 'version', 'env_url', 'engineer', 'test_period', 'report_date']
     field_values = {
-        'project': project, 'version': version, 'env_url': env_url,
+        'project': project, 'version': version, 'env_url': env_url, 
         'engineer': engineer, 'test_period': test_period, 'report_date': report_date
     }
     for field in required_fields:
@@ -1373,6 +1127,7 @@ if submitted:
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
+    
     except Exception as e:
         st.error(f"❌ Ошибка генерации отчёта: {str(e)}")
         with st.expander("Детали ошибки (для отладки)"):
