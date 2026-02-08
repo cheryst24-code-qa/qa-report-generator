@@ -702,7 +702,7 @@ def generate_xlsx_single_sheet(data, module_data_list, defects_df):
         ["Стенд", data["env_url"].strip()],
         ["Инструменты", data["tools"]],
         ["Методология", data["methodology"]],
-        ["Тест-инженер", data["engineer"]],
+        ["QA-инженер", data["engineer"]],
         ["Дата формирования", data["report_date"]],
     ]
     for label, value in context_rows:
@@ -921,7 +921,7 @@ with st.form("main_form"):
     with col_info2:
         test_period = st.text_input("Период тестирования", "29–30 ноября 2025 г.")
         report_date = st.text_input("Дата формирования отчёта", "30 ноября 2025 г.")
-        engineer = st.text_input("Тест-инженер", "Черкасов Игорь")
+        engineer = st.text_input("QA-инженер", "Игорь Ch.")
     
     # === РАЗДЕЛ 1: КРАТКОЕ РЕЗЮМЕ (только данные резюме, как в таблице из PDF) ===
     st.header("1. Краткое резюме")
@@ -1023,7 +1023,7 @@ with st.form("main_form"):
     # === РАЗДЕЛ 7: ПОДПИСЬ ===
     st.header("7. Подпись")
     role = st.text_input("Роль", "QA-инженер")
-    fullname = st.text_input("ФИО", "Черкасов Игорь")
+    fullname = st.text_input("ФИО", "Игорь Ch.")
     signature_date = st.text_input("Дата", "30.11.2025")
     
     submitted = st.form_submit_button("📥 Создать отчёт", type="primary")
