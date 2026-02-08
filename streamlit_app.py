@@ -68,7 +68,7 @@ def add_table_from_df(doc, df, header_text=None):
         for paragraph in hdr_cells[i].paragraphs:
             for run in paragraph.runs:
                 run.font.bold = True
-                run.font.size = Pt(10)
+                run.font.size = Pt(13)
             paragraph.paragraph_format.space_after = Pt(2)
             paragraph.paragraph_format.space_before = Pt(2)
 
@@ -81,7 +81,7 @@ def add_table_from_df(doc, df, header_text=None):
             row_cells[i].text = display_value
             for paragraph in row_cells[i].paragraphs:
                 for run in paragraph.runs:
-                    run.font.size = Pt(9)
+                    run.font.size = Pt(13)
                 paragraph.paragraph_format.space_after = Pt(2)
                 paragraph.paragraph_format.space_before = Pt(2)
 
