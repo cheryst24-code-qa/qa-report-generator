@@ -1,20 +1,25 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
+from docx import Document
+from docx.shared import Inches, Pt
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 import base64
-from docx import Document
-from docx.shared import Inches, Pt, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
-from openpyxl import Workbook
-from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+import traceback
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
+# === ФУНКЦИИ ДЛЯ РАБОТЫ С ЧЕРНОВИКАМИ (НОВЫЕ, БЕЗОПАСНЫЕ) ===
 import json
 from datetime import datetime
-import numpy as np
 
-# === ФУНКЦИИ ДЛЯ РАБОТЫ С ЧЕРНОВИКАМИ (безопасные) ===
 def save_draft(data, module_data_list, defects_df):
     """Сохраняет данные формы в структуру для черновика"""
     draft = {
@@ -61,28 +66,53 @@ def load_draft(json_content):
         st.error(f"❌ Ошибка загрузки черновика: {str(e)}")
         return None, None, None, None
 
-# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ DOCX ===
-def set_col_width(table, col_idx, width_twips):
-    """Устанавливает ширину колонки в таблице DOCX (в твипах)"""
-    for row in table.rows:
-        cell = row.cells[col_idx]
-        tc = cell._tc
-        tc_pr = tc.get_or_add_tcPr()
-        tc_w = OxmlElement('w:tcW')
-        tc_w.set(qn('w:w'), str(width_twips))
-        tc_w.set(qn('w:type'), 'dxa')
-        tc_pr.append(tc_w)
+# === ОРИГИНАЛЬНЫЕ ФУНКЦИИ ГЕНЕРАЦИИ ОТЧЁТОВ (БЕЗ ИЗМЕНЕНИЙ) ===
+def set_col_width(col, width_twips):
+    """Устанавливает точную ширину колонки в таблице Word"""
+    for cell in col.cells:
+        tc = cell._element.tcPr
+        tcW = OxmlElement('w:tcW')
+        tcW.set(qn('w:w'), str(int(width_twips)))
+        tcW.set(qn('w:type'), 'dxa')
+        tc.append(tcW)
 
-def add_table_from_df(doc, df, col_widths=None):
-    """Добавляет таблицу из DataFrame в документ DOCX"""
+def add_table_from_df(doc, df, header_text=None):
+    """Добавляет таблицу из DataFrame в документ с заголовком и обработкой пустых данных"""
+    # 🔴 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: проверка до создания таблицы
     if df.empty or len(df.columns) == 0:
-        doc.add_paragraph("Нет данных для отображения")
+        if header_text:
+            p = doc.add_paragraph()
+            p.add_run(f"{header_text}: ").bold = True
+            p.add_run("нет данных для отображения")
+        else:
+            doc.add_paragraph("Нет данных для отображения")
+        doc.add_paragraph().paragraph_format.space_after = Pt(6)
         return
     
+    # Заголовок таблицы (опционально)
+    if header_text:
+        p = doc.add_paragraph()
+        p.add_run(header_text).bold = True
+        p.paragraph_format.space_after = Pt(6)
+    
+    # Создание таблицы
     table = doc.add_table(rows=1, cols=len(df.columns))
     table.style = 'Table Grid'
+    table.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
     
-    # Заголовки
+    # Настройка ширины колонок (25%/75% как в образце)
+    total_width = Inches(6.5)
+    num_cols = len(df.columns)
+    if num_cols > 0:
+        first_width_twips = int(total_width.twips * 0.25)
+        remaining_width_twips = total_width.twips - first_width_twips
+        other_width_twips = int(remaining_width_twips / (num_cols - 1)) if num_cols > 1 else int(remaining_width_twips)
+        
+        set_col_width(table.columns[0], first_width_twips)
+        for i in range(1, num_cols):
+            set_col_width(table.columns[i], other_width_twips)
+    
+    # Заголовки колонок
     hdr_cells = table.rows[0].cells
     for i, column in enumerate(df.columns):
         hdr_cells[i].text = str(column)
@@ -90,915 +120,881 @@ def add_table_from_df(doc, df, col_widths=None):
             for run in paragraph.runs:
                 run.font.bold = True
                 run.font.size = Pt(10)
-                run.font.name = 'Calibri Light'
+            paragraph.paragraph_format.space_after = Pt(2)
+            paragraph.paragraph_format.space_before = Pt(2)
     
-    # Данные
+    # Данные таблицы
     for _, row in df.iterrows():
         row_cells = table.add_row().cells
         for i, value in enumerate(row):
-            cell_text = str(value) if pd.notna(value) else ""
-            row_cells[i].text = cell_text
+            # 🔴 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: обработка NaN/None
+            display_value = str(value) if pd.notna(value) else "—"
+            row_cells[i].text = display_value
             for paragraph in row_cells[i].paragraphs:
                 for run in paragraph.runs:
-                    run.font.size = Pt(10)
-                    run.font.name = 'Calibri Light'
+                    run.font.size = Pt(9)
+                paragraph.paragraph_format.space_after = Pt(2)
+                paragraph.paragraph_format.space_before = Pt(2)
     
-    # Установка ширины колонок (если задана)
-    if col_widths:
-        for col_idx, width in enumerate(col_widths):
-            set_col_width(table, col_idx, width)
+    doc.add_paragraph().paragraph_format.space_after = Pt(12)
 
-# === ГЕНЕРАЦИЯ DOCX ОТЧЁТА ===
 def generate_docx(data, module_data_list, defects_df):
+    """Генерирует отчёт в точном соответствии с образцом из PDF"""
     doc = Document()
     
-    # Стиль документа
+    # Настройка стиля документа
     style = doc.styles['Normal']
-    font = style.font
-    font.name = 'Calibri Light'
-    font.size = Pt(11)
+    style.font.name = 'Calibri Light'
+    style.font.size = Pt(13)
     
-    # Заголовок
-    title = doc.add_paragraph()
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title.add_run(data["report_title"])
-    run.font.size = Pt(16)
-    run.font.bold = True
-    run.font.name = 'Calibri Light'
-    doc.add_paragraph()
+    # === ЗАГОЛОВОК ОТЧЁТА (центрированный, крупный) ===
+    title = doc.add_heading(data["report_title"], 0)
+    title.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+    title_font = title.runs[0].font
+    title_font.size = Pt(16)
+    title_font.bold = True
     
-    # Основная информация (таблица 25%/75%)
-    info_table = doc.add_table(rows=7, cols=2)
+    # === ТАБЛИЦА С ОСНОВНОЙ ИНФОРМАЦИЕЙ (6 строк × 2 колонки) ===
+    total_width_twips = Inches(6.5).twips
+    first_col_width_twips = int(total_width_twips * 0.25)
+    second_col_width_twips = int(total_width_twips * 0.75)
+    
+    info_table = doc.add_table(rows=6, cols=2)
     info_table.style = 'Table Grid'
     
+    set_col_width(info_table.columns[0], first_col_width_twips)
+    set_col_width(info_table.columns[1], second_col_width_twips)
+    
     fields = [
-        ("Проект", data["project"]),
-        ("Тип приложения", data["app_type"]),
-        ("Версия", data["version"]),
-        ("Период тестирования", data["test_period"]),
-        ("Дата формирования отчёта", data["report_date"]),
-        ("Инженер по тестированию", data["engineer"]),
-        ("Статус релиза", data["release_status"]),
+        ('Проект:', data["project"]),
+        ('Тип приложения:', data["app_type"]),
+        ('Версия приложения:', data["version"]),
+        ('Период тестирования:', data["test_period"]),
+        ('Дата формирования отчёта:', data["report_date"]),
+        ('QA-инженер:', data["engineer"])
     ]
     
     for i, (label, value) in enumerate(fields):
-        info_table.cell(i, 0).text = label
-        info_table.cell(i, 1).text = str(value)
-        # Жирный шрифт для лейблов
-        for paragraph in info_table.cell(i, 0).paragraphs:
-            for run in paragraph.runs:
-                run.font.bold = True
-                run.font.name = 'Calibri Light'
-                run.font.size = Pt(10)
-        # Обычный шрифт для значений
-        for paragraph in info_table.cell(i, 1).paragraphs:
-            for run in paragraph.runs:
-                run.font.name = 'Calibri Light'
-                run.font.size = Pt(10)
+        cell1 = info_table.cell(i, 0)
+        cell1.text = label
+        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell1.paragraphs[0].runs:
+            run.font.bold = True
+        
+        cell2 = info_table.cell(i, 1)
+        cell2.text = value
+        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
     
-    # Установка ширины колонок 25%/75% (25% = 1800 твипов от общей ширины ~7200)
-    set_col_width(info_table, 0, 1800)
-    set_col_width(info_table, 1, 5400)
-    doc.add_paragraph()
+    doc.add_paragraph().paragraph_format.space_after = Pt(12)
     
-    # Краткое резюме
-    doc.add_paragraph("Краткое резюме", style='Heading 2')
+    # === РАЗДЕЛ 1: КРАТКОЕ РЕЗЮМЕ ===
+    doc.add_heading('1. КРАТКОЕ РЕЗЮМЕ', 1)
     
-    # Метрики (таблица 25%/75%)
-    metrics_table = doc.add_table(rows=4, cols=2)
-    metrics_table.style = 'Table Grid'
+    summary_table = doc.add_table(rows=8, cols=2)
+    summary_table.style = 'Table Grid'
     
-    metrics = [
-        ("Количество дефектов (S1)", f"{data['s1']}"),
-        ("Количество дефектов (S2)", f"{data['s2']}"),
-        ("Всего тест-кейсов", f"{data['total_tc']}"),
-        ("Пройдено успешно", f"{data['pass']}"),
+    set_col_width(summary_table.columns[0], first_col_width_twips)
+    set_col_width(summary_table.columns[1], second_col_width_twips)
+    
+    total = data['total_tc']
+    pass_pct = data['pass'] / total * 100 if total > 0 else 0
+    fail_pct = 100 - pass_pct
+    
+    summary_fields = [
+        ('Статус релиза:', data['release_status']),
+        ('Критические дефекты (S1):', str(data['s1'])),
+        ('Мажорные дефекты (S2):', str(data['s2'])),
+        ('Всего тест-кейсов:', str(data['total_tc'])),
+        ('Успешно (Pass):', f"{data['pass']} ({pass_pct:.1f}%)"),
+        ('Упали (Fail):', f"{data['fail']} ({fail_pct:.1f}%)"),
+        ('Основной риск:', data['risk']),
+        ('Рекомендация:', data['recommendation'])
     ]
     
-    for i, (label, value) in enumerate(metrics):
-        metrics_table.cell(i, 0).text = label
-        metrics_table.cell(i, 1).text = value
-        for paragraph in metrics_table.cell(i, 0).paragraphs:
-            for run in paragraph.runs:
-                run.font.bold = True
-                run.font.name = 'Calibri Light'
-                run.font.size = Pt(10)
-        for paragraph in metrics_table.cell(i, 1).paragraphs:
-            for run in paragraph.runs:
-                run.font.name = 'Calibri Light'
-                run.font.size = Pt(10)
+    for i, (label, value) in enumerate(summary_fields):
+        cell1 = summary_table.cell(i, 0)
+        cell1.text = label
+        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell1.paragraphs[0].runs:
+            run.font.bold = True
+        
+        cell2 = summary_table.cell(i, 1)
+        cell2.text = value
+        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
     
-    set_col_width(metrics_table, 0, 1800)
-    set_col_width(metrics_table, 1, 5400)
-    doc.add_paragraph()
+    doc.add_paragraph().paragraph_format.space_after = Pt(12)
     
-    # Риски и рекомендации
-    if data["risk"].strip():
-        doc.add_paragraph("Риски", style='Heading 3')
-        doc.add_paragraph(data["risk"])
+    # === ДИАГРАММЫ ===
+    # Диаграмма 1: Распределение результатов
+    plt.figure(figsize=(5, 4))
+    plt.pie(
+        [data['pass'], data['fail']],
+        labels=['PASS', 'FAIL'],
+        autopct='%1.1f%%',
+        colors=['#4CAF50', '#F44336'],
+        startangle=90
+    )
+    plt.title('Рис. 1. Распределение результатов тест-кейсов')
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    buf.seek(0)
+    plt.close()
     
-    if data["recommendation"].strip():
-        doc.add_paragraph("Рекомендации", style='Heading 3')
-        doc.add_paragraph(data["recommendation"])
-    doc.add_paragraph()
+    doc.add_picture(buf, width=Inches(5))
+    doc.add_paragraph().paragraph_format.space_after = Pt(12)
     
-    # Диаграммы (заглушки с описанием)
-    doc.add_paragraph("Диаграммы", style='Heading 2')
-    doc.add_paragraph("Рис. 1. Распределение результатов тестирования")
-    doc.add_paragraph("[Диаграмма будет вставлена вручную]")
-    doc.add_paragraph()
-    doc.add_paragraph("Рис. 2. Распределение дефектов по серьёзности")
-    doc.add_paragraph("[Диаграмма будет вставлена вручную]")
-    doc.add_paragraph()
+    # Диаграмма 2: Дефекты по серьёзности
+    plt.figure(figsize=(5, 4))
+    bars = plt.bar(
+        ['Critical (S1)', 'Major (S2)'],
+        [data['s1'], data['s2']],
+        color=['#F44336', '#FF9800'],
+        width=0.5
+    )
+    plt.title('Рис. 2. Дефекты по уровню серьёзности')
+    plt.ylabel('Количество')
+    plt.ylim(0, max(data['s1'], data['s2'], 1) * 1.3)
     
-    # Контекст тестирования
-    doc.add_paragraph("Контекст тестирования", style='Heading 2')
+    for bar in bars:
+        h = bar.get_height()
+        if h > 0:
+            plt.text(
+                bar.get_x() + bar.get_width()/2,
+                h + 0.05,
+                str(int(h)),
+                ha='center',
+                va='bottom'
+            )
     
-    context_table = doc.add_table(rows=5, cols=2)
+    plt.grid(axis='y', alpha=0.3, linestyle='--')
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    buf.seek(0)
+    plt.close()
+    
+    doc.add_picture(buf, width=Inches(5))
+    doc.add_paragraph().paragraph_format.space_after = Pt(12)
+    
+    # === РАЗДЕЛ 2: КОНТЕКСТ ТЕСТИРОВАНИЯ ===
+    doc.add_heading('2. КОНТЕКСТ ТЕСТИРОВАНИЯ', 1)
+    
+    context_table = doc.add_table(rows=6, cols=2)
     context_table.style = 'Table Grid'
     
+    set_col_width(context_table.columns[0], first_col_width_twips)
+    set_col_width(context_table.columns[1], second_col_width_twips)
+    
     context_fields = [
-        ("Устройство / Браузер", data["device_browser"]),
-        ("ОС / Платформа", data["os_platform"]),
-        ("Сборка", data["build"]),
-        ("URL окружения", data["env_url"]),
-        ("Инструменты", data["tools"]),
+        ('Устройство / Браузер:', data['device_browser']),
+        ('ОС / Платформа:', data['os_platform']),
+        ('Сборка / Версия:', data['build']),
+        ('Стенд:', f"Тестовое окружение (адрес: {data['env_url']})"),
+        ('Инструменты:', data['tools']),
+        ('Методология:', data['methodology'])
     ]
     
     for i, (label, value) in enumerate(context_fields):
-        context_table.cell(i, 0).text = label
-        context_table.cell(i, 1).text = str(value)
-        for paragraph in context_table.cell(i, 0).paragraphs:
-            for run in paragraph.runs:
-                run.font.bold = True
-                run.font.name = 'Calibri Light'
-                run.font.size = Pt(10)
-        for paragraph in context_table.cell(i, 1).paragraphs:
-            for run in paragraph.runs:
-                run.font.name = 'Calibri Light'
-                run.font.size = Pt(10)
+        cell1 = context_table.cell(i, 0)
+        cell1.text = label
+        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell1.paragraphs[0].runs:
+            run.font.bold = True
+        
+        cell2 = context_table.cell(i, 1)
+        cell2.text = value
+        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
     
-    set_col_width(context_table, 0, 1800)
-    set_col_width(context_table, 1, 5400)
-    doc.add_paragraph()
+    doc.add_paragraph().paragraph_format.space_after = Pt(12)
     
-    if data["methodology"].strip():
-        doc.add_paragraph("Методология тестирования", style='Heading 3')
-        doc.add_paragraph(data["methodology"])
-        doc.add_paragraph()
+    # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
+    doc.add_heading('3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ', 1)
     
-    # Результаты по модулям
-    doc.add_paragraph("Результаты тестирования по модулям", style='Heading 2')
+    for idx, module_info in enumerate(module_data_list):
+        title = module_info['title']
+        df = module_info['df']
+        doc.add_heading(f'3.{idx+1}. {title}', 2)
+        add_table_from_df(doc, df)
     
-    for module in module_data_list:
-        doc.add_paragraph(module["title"], style='Heading 3')
-        add_table_from_df(doc, module["df"], col_widths=[1800, 5400, 1800, 5400])
-        doc.add_paragraph()
+    # === РАЗДЕЛ 4: АНАЛИЗ ДЕФЕКТОВ ===
+    doc.add_heading('4. АНАЛИЗ ДЕФЕКТОВ', 1)
+    add_table_from_df(doc, defects_df)
     
-    # Анализ дефектов
-    if not defects_df.empty:
-        doc.add_paragraph("Анализ дефектов", style='Heading 2')
-        add_table_from_df(doc, defects_df)
-        doc.add_paragraph()
+    # Последствия: просто текст после заголовка без лишних отступов
+    p = doc.add_paragraph()
+    p.add_run('Последствия: ').bold = True
+    p.add_run(data['consequences'])
+    doc.add_paragraph().paragraph_format.space_after = Pt(6)
     
-    # Ограничения тестирования
-    if data["limitations"].strip():
-        doc.add_paragraph("Ограничения тестирования", style='Heading 2')
-        # Преобразуем маркированный список в нумерованный
-        lines = [line.strip() for line in data["limitations"].split('\n') if line.strip()]
-        for line in lines:
-            # Убираем маркеры "-", "*" если есть
-            clean_line = line.lstrip('-*• ').strip()
-            doc.add_paragraph(clean_line, style='List Number')
-        doc.add_paragraph()
+    # === РАЗДЕЛ 5: ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ (нумерованный список!) ===
+    doc.add_heading('5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ', 1)
     
-    # Вывод и рекомендации
-    doc.add_paragraph("Вывод и рекомендации", style='Heading 2')
+    # ВАЖНО: в образце используется нумерованный список (1., 2., 3.), а не маркированный
+    for line in data['limitations'].split('\n'):
+        if line.strip():
+            # Убираем автоматическую нумерацию, если пользователь уже ввёл её
+            clean_line = line.strip()
+            if not clean_line[0].isdigit():
+                # Если нет нумерации — добавляем вручную
+                p = doc.add_paragraph(clean_line, style='List Number')
+            else:
+                p = doc.add_paragraph(clean_line)
+            p.paragraph_format.space_after = Pt(2)
     
-    if data["consequences"].strip():
-        doc.add_paragraph("Последствия дефектов", style='Heading 3')
-        doc.add_paragraph(data["consequences"])
+    doc.add_paragraph().paragraph_format.space_after = Pt(6)
     
-    if data["conclusion"].strip():
-        doc.add_paragraph("Вывод", style='Heading 3')
-        doc.add_paragraph(data["conclusion"])
+    # === РАЗДЕЛ 6: ВЫВОД И РЕКОМЕНДАЦИИ ===
+    doc.add_heading('6. ВЫВОД И РЕКОМЕНДАЦИИ', 1)
     
-    if data["recommendations_detailed"].strip():
-        doc.add_paragraph("Рекомендации", style='Heading 3')
-        doc.add_paragraph(data["recommendations_detailed"])
-    doc.add_paragraph()
+    # Вывод: текст сразу после слова "Вывод:" без переноса строки
+    p = doc.add_paragraph()
+    p.add_run('Вывод: ').bold = True
+    p.add_run(data['conclusion'])
+    doc.add_paragraph().paragraph_format.space_after = Pt(6)
     
-    # Подпись
-    doc.add_paragraph("Подпись", style='Heading 2')
+    # Рекомендации: маркированный список
+    p = doc.add_paragraph()
+    p.add_run('Рекомендации:').bold = True
+    doc.add_paragraph().paragraph_format.space_after = Pt(2)
+    
+    for line in data['recommendations_detailed'].split('\n'):
+        if line.strip():
+            p = doc.add_paragraph(line.strip(), style='List Bullet')
+            p.paragraph_format.left_indent = Inches(0.25)
+            p.paragraph_format.space_after = Pt(2)
+    
+    # === РАЗДЕЛ 7: ПОДПИСЬ (чистая таблица 3×2 без артефактов) ===
+    doc.add_heading('7. ПОДПИСЬ', 1)
     
     signature_table = doc.add_table(rows=3, cols=2)
     signature_table.style = 'Table Grid'
     
+    set_col_width(signature_table.columns[0], first_col_width_twips)
+    set_col_width(signature_table.columns[1], second_col_width_twips)
+    
     signature_fields = [
-        ("Роль", data["role"]),
-        ("ФИО", data["fullname"]),
-        ("Дата", data["signature_date"]),
+        ('Роль :', data['role']),
+        ('ФИО :', data['fullname']),
+        ('Дата :', data['signature_date'])
     ]
     
     for i, (label, value) in enumerate(signature_fields):
-        signature_table.cell(i, 0).text = label
-        signature_table.cell(i, 1).text = str(value)
-        for paragraph in signature_table.cell(i, 0).paragraphs:
-            for run in paragraph.runs:
-                run.font.bold = True
-                run.font.name = 'Calibri Light'
-                run.font.size = Pt(10)
-        for paragraph in signature_table.cell(i, 1).paragraphs:
-            for run in paragraph.runs:
-                run.font.name = 'Calibri Light'
-                run.font.size = Pt(10)
+        cell1 = signature_table.cell(i, 0)
+        cell1.text = label
+        cell1.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
+        for run in cell1.paragraphs[0].runs:
+            run.font.bold = True
+        
+        cell2 = signature_table.cell(i, 1)
+        cell2.text = value
+        cell2.paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
     
-    set_col_width(signature_table, 0, 1800)
-    set_col_width(signature_table, 1, 5400)
-    
-    # Сохранение в буфер
+    # Сохранение документа
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)
     return buffer
 
-# === ГЕНЕРАЦИЯ HTML ОТЧЁТА ===
+def generate_chart_base64(pass_count, fail_count, s1_count, s2_count):
+    """Генерирует диаграммы в base64"""
+    plt.figure(figsize=(6, 4.5))
+    plt.pie(
+        [pass_count, fail_count],
+        labels=['PASS', 'FAIL'],
+        autopct='%1.1f%%',
+        colors=['#4CAF50', '#F44336'],
+        startangle=90,
+        textprops={'fontsize': 11}
+    )
+    plt.title('Рис. 1. Распределение результатов тест-кейсов', fontsize=10, pad=15)
+    buf1 = io.BytesIO()
+    plt.savefig(buf1, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    
+    plt.figure(figsize=(6, 4.5))
+    bars = plt.bar(
+        ['Critical (S1)', 'Major (S2)'],
+        [s1_count, s2_count],
+        color=['#F44336', '#FF9800'],
+        width=0.5
+    )
+    plt.title('Рис. 2. Дефекты по уровню серьёзности', fontsize=10, pad=15)
+    plt.ylabel('Количество', fontsize=11)
+    plt.ylim(0, max(s1_count, s2_count, 1) * 1.3)
+    
+    for bar in bars:
+        h = bar.get_height()
+        if h > 0:
+            plt.text(
+                bar.get_x() + bar.get_width()/2,
+                h + 0.05,
+                str(int(h)),
+                ha='center',
+                va='bottom',
+                fontsize=11,
+                fontweight='bold'
+            )
+    
+    plt.grid(axis='y', alpha=0.3, linestyle='--')
+    
+    buf2 = io.BytesIO()
+    plt.savefig(buf2, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    plt.close()
+    
+    chart1_base64 = base64.b64encode(buf1.getvalue()).decode('utf-8')
+    chart2_base64 = base64.b64encode(buf2.getvalue()).decode('utf-8')
+    return chart1_base64, chart2_base64
+
 def escape_html(text):
+    """Экранирование HTML для безопасности"""
     if pd.isna(text) or text is None:
         return ""
+    if not isinstance(text, str):
+        return str(text)
     return (str(text)
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-            .replace("'", "&#x27;"))
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+            .replace('"', '&quot;')
+            .replace("'", '&#39;'))
+
+def format_multiline_html(text):
+    """Форматирование многострочного текста для HTML с экранированием"""
+    if pd.isna(text) or text is None:
+        return "—"
+    lines = [line.strip() for line in str(text).splitlines() if line.strip()]
+    if not lines:
+        return "—"
+    return "<br>".join(escape_html(line) for line in lines)
 
 def generate_html_report(data, module_data_list, defects_df):
-    # Валидация метрик
-    validation_errors = []
-    total_tc = data["total_tc"]
-    pass_tc = data["pass"]
-    fail_tc = data["fail"]
+    """Генерирует HTML-отчёт в соответствии с образцом"""
+    chart1, chart2 = generate_chart_base64(data['pass'], data['fail'], data['s1'], data['s2'])
     
-    if pass_tc + fail_tc != total_tc:
-        validation_errors.append("⚠️ Сумма статусов (PASS + FAIL) не равна общему количеству тест-кейсов")
+    total = data['total_tc']
+    pass_pct = data['pass'] / total * 100 if total > 0 else 0
+    fail_pct = 100 - pass_pct
     
-    # Подготовка данных для диаграмм
-    labels_results = ['PASS', 'FAIL']
-    sizes_results = [pass_tc, fail_tc]
-    colors_results = ['#4CAF50', '#F44336']
-    
-    labels_severity = []
-    sizes_severity = []
-    colors_severity_map = {'S1': '#F44336', 'S2': '#FF9800', 'S3': '#FFC107', 'S4': '#4CAF50'}
-    
-    if data['s1'] > 0:
-        labels_severity.append('S1')
-        sizes_severity.append(data['s1'])
-    if data['s2'] > 0:
-        labels_severity.append('S2')
-        sizes_severity.append(data['s2'])
-    
-    # Создание диаграмм в base64
-    def plot_to_base64(fig):
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight', dpi=150)
-        buf.seek(0)
-        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-        buf.close()
-        plt.close(fig)
-        return img_base64
-    
-    # Диаграмма результатов
-    fig1, ax1 = plt.subplots(figsize=(6, 4))
-    ax1.pie(sizes_results, labels=labels_results, colors=colors_results, autopct='%1.1f%%', startangle=90)
-    ax1.axis('equal')
-    chart1_base64 = plot_to_base64(fig1)
-    
-    # Диаграмма серьёзности (если есть дефекты)
-    chart2_base64 = None
-    if sizes_severity:
-        fig2, ax2 = plt.subplots(figsize=(6, 4))
-        colors_sev = [colors_severity_map.get(lbl, '#9E9E9E') for lbl in labels_severity]
-        ax2.pie(sizes_severity, labels=labels_severity, colors=colors_sev, autopct='%1.1f%%', startangle=90)
-        ax2.axis('equal')
-        chart2_base64 = plot_to_base64(fig2)
-    
-    # Формирование HTML
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="ru">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{escape_html(data['report_title'])}</title>
-        <style>
-            body {{
-                font-family: 'Calibri', 'Segoe UI', Arial, sans-serif;
-                line-height: 1.6;
-                color: #333;
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px;
-                background-color: #f9f9f9;
-            }}
-            .container {{
-                background: white;
-                padding: 30px;
-                border-radius: 8px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            }}
-            h1 {{
-                text-align: center;
-                color: #1a365d;
-                font-size: 24px;
-                margin-bottom: 30px;
-                border-bottom: 2px solid #4472C4;
-                padding-bottom: 10px;
-            }}
-            h2 {{
-                color: #4472C4;
-                border-left: 4px solid #4472C4;
-                padding-left: 10px;
-                margin-top: 25px;
-            }}
-            h3 {{
-                color: #5b616b;
-                margin-top: 20px;
-            }}
-            .info-table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin: 15px 0;
-                font-size: 14px;
-            }}
-            .info-table th, .info-table td {{
-                border: 1px solid #ddd;
-                padding: 8px 12px;
-                text-align: left;
-                vertical-align: top;
-            }}
-            .info-table th {{
-                background-color: #f2f2f2;
-                width: 25%;
-                font-weight: bold;
-            }}
-            .status-pass {{
-                background-color: #e8f5e9;
-                color: #2e7d32;
-                font-weight: bold;
-            }}
-            .status-fail {{
-                background-color: #ffebee;
-                color: #c62828;
-                font-weight: bold;
-            }}
-            .severity-s1 {{
-                background-color: #ffebee;
-                color: #c62828;
-                font-weight: bold;
-            }}
-            .severity-s2 {{
-                background-color: #fff3e0;
-                color: #e65100;
-                font-weight: bold;
-            }}
-            .chart-container {{
-                text-align: center;
-                margin: 25px 0;
-            }}
-            .chart-container img {{
-                max-width: 100%;
-                height: auto;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-            }}
-            .chart-caption {{
-                font-size: 13px;
-                color: #666;
-                margin-top: 5px;
-            }}
-            .validation-error {{
-                background-color: #ffebee;
-                color: #c62828;
-                padding: 10px;
-                border-radius: 4px;
-                margin: 15px 0;
-                border-left: 4px solid #c62828;
-            }}
-            .limitations li {{
-                margin-bottom: 5px;
-            }}
-            @media print {{
-                body {{
-                    background-color: white;
-                    padding: 0;
-                }}
-                .container {{
-                    box-shadow: none;
-                    padding: 15px;
-                }}
-                .no-print {{
-                    display: none;
-                }}
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>{escape_html(data['report_title'])}</h1>
-            
-            <!-- Валидация -->
-            {"".join([f'<div class="validation-error">{err}</div>' for err in validation_errors]) if validation_errors else ""}
-            
-            <!-- Основная информация -->
-            <h2>1. Основная информация</h2>
-            <table class="info-table">
-                <tr><th>Проект</th><td>{escape_html(data['project'])}</td></tr>
-                <tr><th>Тип приложения</th><td>{escape_html(data['app_type'])}</td></tr>
-                <tr><th>Версия</th><td>{escape_html(data['version'])}</td></tr>
-                <tr><th>Период тестирования</th><td>{escape_html(data['test_period'])}</td></tr>
-                <tr><th>Дата формирования отчёта</th><td>{escape_html(data['report_date'])}</td></tr>
-                <tr><th>Инженер по тестированию</th><td>{escape_html(data['engineer'])}</td></tr>
-                <tr><th>Статус релиза</th><td>{escape_html(data['release_status'])}</td></tr>
-            </table>
-            
-            <!-- Краткое резюме -->
-            <h2>2. Краткое резюме</h2>
-            <table class="info-table">
-                <tr><th>Количество дефектов (S1)</th><td>{data['s1']}</td></tr>
-                <tr><th>Количество дефектов (S2)</th><td>{data['s2']}</td></tr>
-                <tr><th>Всего тест-кейсов</th><td>{data['total_tc']}</td></tr>
-                <tr><th>Пройдено успешно</th><td>{data['pass']}</td></tr>
-            </table>
-            
-            <h3>Риски</h3>
-            <p>{escape_html(data['risk'])}</p>
-            
-            <h3>Рекомендации</h3>
-            <p>{escape_html(data['recommendation'])}</p>
-            
-            <!-- Диаграммы -->
-            <h2>3. Диаграммы</h2>
-            <div class="chart-container">
-                <img src="data:image/png;base64,{chart1_base64}" alt="Распределение результатов">
-                <div class="chart-caption">Рис. 1. Распределение результатов тестирования</div>
-            </div>
-            """
-    
-    if chart2_base64:
-        html_content += f"""
-            <div class="chart-container">
-                <img src="data:image/png;base64,{chart2_base64}" alt="Распределение дефектов по серьёзности">
-                <div class="chart-caption">Рис. 2. Распределение дефектов по серьёзности</div>
-            </div>
-            """
-    
-    # Контекст тестирования
-    html_content += f"""
-            <h2>4. Контекст тестирования</h2>
-            <table class="info-table">
-                <tr><th>Устройство / Браузер</th><td>{escape_html(data['device_browser'])}</td></tr>
-                <tr><th>ОС / Платформа</th><td>{escape_html(data['os_platform'])}</td></tr>
-                <tr><th>Сборка</th><td>{escape_html(data['build'])}</td></tr>
-                <tr><th>URL окружения</th><td>{escape_html(data['env_url'])}</td></tr>
-                <tr><th>Инструменты</th><td>{escape_html(data['tools'])}</td></tr>
-            </table>
-            
-            <h3>Методология тестирования</h3>
-            <p>{escape_html(data['methodology'])}</p>
-            """
-    
-    # Результаты по модулям
-    html_content += f"""
-            <h2>5. Результаты тестирования по модулям</h2>
-            """
-    
-    for module in module_data_list:
-        html_content += f"""
-            <h3>{escape_html(module['title'])}</h3>
-            <table class="info-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Сценарий</th>
-                        <th>Статус</th>
-                        <th>Комментарий</th>
-                    </tr>
-                </thead>
-                <tbody>
-            """
-        for _, row in module['df'].iterrows():
-            status_class = "status-pass" if str(row['Статус']).strip().upper() == "PASS" else "status-fail"
-            html_content += f"""
-                    <tr>
-                        <td>{escape_html(row['ID'])}</td>
-                        <td>{escape_html(row['Сценарий'])}</td>
-                        <td class="{status_class}">{escape_html(row['Статус'])}</td>
-                        <td>{escape_html(row['Комментарий'])}</td>
-                    </tr>
-            """
-        html_content += """
-                </tbody>
-            </table>
-            """
-    
-    # Анализ дефектов
-    if not defects_df.empty:
-        html_content += f"""
-            <h2>6. Анализ дефектов</h2>
-            <table class="info-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Модуль</th>
-                        <th>Заголовок</th>
-                        <th>Серьёзность</th>
-                        <th>Статус</th>
-                    </tr>
-                </thead>
-                <tbody>
-            """
-        for _, row in defects_df.iterrows():
-            sev_class = f"severity-{str(row['Серьёзность']).lower()}" if pd.notna(row['Серьёзность']) else ""
-            html_content += f"""
-                    <tr>
-                        <td>{escape_html(row['ID'])}</td>
-                        <td>{escape_html(row['Модуль'])}</td>
-                        <td>{escape_html(row['Заголовок'])}</td>
-                        <td class="{sev_class}">{escape_html(row['Серьёзность'])}</td>
-                        <td>{escape_html(row['Статус'])}</td>
-                    </tr>
-            """
-        html_content += """
-                </tbody>
-            </table>
-            """
-    
-    # Ограничения тестирования
-    if data["limitations"].strip():
-        html_content += f"""
-            <h2>7. Ограничения тестирования</h2>
-            <div class="limitations">
-                <ol>
-        """
-        lines = [line.strip() for line in data["limitations"].split('\n') if line.strip()]
-        for line in lines:
-            clean_line = line.lstrip('-*• ').strip()
-            html_content += f"<li>{escape_html(clean_line)}</li>"
-        html_content += """
-                </ol>
-            </div>
-            """
-    
-    # Вывод и рекомендации
-    html_content += f"""
-            <h2>8. Вывод и рекомендации</h2>
-            """
-    
-    if data["consequences"].strip():
-        html_content += f"""
-            <h3>Последствия дефектов</h3>
-            <p>{escape_html(data['consequences'])}</p>
-            """
-    
-    if data["conclusion"].strip():
-        html_content += f"""
-            <h3>Вывод</h3>
-            <p>{escape_html(data['conclusion'])}</p>
-            """
-    
-    if data["recommendations_detailed"].strip():
-        html_content += f"""
-            <h3>Рекомендации</h3>
-            <p>{escape_html(data['recommendations_detailed'])}</p>
-            """
-    
-    # Подпись
-    html_content += f"""
-            <h2>9. Подпись</h2>
-            <table class="info-table">
-                <tr><th>Роль</th><td>{escape_html(data['role'])}</td></tr>
-                <tr><th>ФИО</th><td>{escape_html(data['fullname'])}</td></tr>
-                <tr><th>Дата</th><td>{escape_html(data['signature_date'])}</td></tr>
-            </table>
-            
-            <div class="no-print" style="margin-top: 30px; text-align: center; color: #666; font-size: 12px;">
-                Отчёт сгенерирован автоматически через инструмент тестовой отчётности
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    
-    return html_content
+    html = f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{escape_html(data['report_title'])}</title>
+<style>
+body {{
+font-family: Calibri Light, 'Segoe UI', sans-serif;
+font-size: 13pt;
+line-height: 1.5;
+max-width: 800px;
+margin: 0 auto;
+padding: 20px;
+color: #000;
+}}
+h1 {{
+text-align: center;
+font-size: 16pt;
+font-weight: bold;
+margin-bottom: 25px;
+margin-top: 0;
+}}
+h2 {{
+font-size: 14pt;
+margin-top: 25px;
+margin-bottom: 12px;
+padding-bottom: 4px;
+border-bottom: 2px solid #000;
+}}
+h3 {{
+font-size: 13pt;
+margin-top: 20px;
+margin-bottom: 10px;
+}}
+table {{
+width: 100%;
+border-collapse: collapse;
+margin: 12px 0 18px 0;
+page-break-inside: avoid;
+}}
+th, td {{
+border: 1px solid #000;
+padding: 8px 10px;
+text-align: left;
+vertical-align: top;
+}}
+th {{
+background-color: #f5f5f5;
+font-weight: bold;
+}}
+.info-table td:first-child,
+.summary-table td:first-child,
+.context-table td:first-child,
+.signature-table td:first-child {{
+width: 25%;
+font-weight: bold;
+background-color: #f9f9f9;
+}}
+.status-pass {{ color: #2e7d32; font-weight: bold; }}
+.status-fail {{ color: #d32f2f; font-weight: bold; }}
+.risk {{ color: #d32f2f; font-weight: bold; }}
+.chart-container {{
+text-align: center;
+margin: 25px 0;
+page-break-inside: avoid;
+}}
+.chart-title {{
+font-weight: bold;
+margin-top: 8px;
+font-size: 11pt;
+}}
+ol {{
+padding-left: 20px;
+margin: 10px 0;
+}}
+ul {{
+padding-left: 20px;
+margin: 10px 0;
+}}
+li {{
+margin-bottom: 5px;
+}}
+@media print {{
+body {{
+padding: 15px;
+-webkit-print-color-adjust: exact;
+print-color-adjust: exact;
+}}
+.chart-container img {{
+max-width: 100% !important;
+height: auto !important;
+}}
+table {{
+page-break-inside: avoid;
+}}
+h2, h3 {{
+page-break-after: avoid;
+}}
+}}
+@page {{
+size: A4;
+margin: 15mm;
+}}
+</style>
+</head>
+<body>
+<h1>{escape_html(data['report_title'])}</h1>
 
-# === ГЕНЕРАЦИЯ XLSX ОТЧЁТА ===
-def generate_xlsx_single_sheet(data, module_data_list, defects_df):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Отчёт о тестировании"
+<table class="info-table">
+<tr><td>Проект:</td><td>{escape_html(data['project'])}</td></tr>
+<tr><td>Тип приложения:</td><td>{escape_html(data['app_type'])}</td></tr>
+<tr><td>Версия приложения:</td><td>{escape_html(data['version'])}</td></tr>
+<tr><td>Период тестирования:</td><td>{escape_html(data['test_period'])}</td></tr>
+<tr><td>Дата формирования отчёта:</td><td>{escape_html(data['report_date'])}</td></tr>
+<tr><td>QA-инженер:</td><td>{escape_html(data['engineer'])}</td></tr>
+</table>
+
+<h2>1. КРАТКОЕ РЕЗЮМЕ</h2>
+
+<table class="summary-table">
+<tr><td>Статус релиза:</td><td>{escape_html(data['release_status'])}</td></tr>
+<tr><td>Критические дефекты (S1):</td><td>{data['s1']}</td></tr>
+<tr><td>Мажорные дефекты (S2):</td><td>{data['s2']}</td></tr>
+<tr><td>Всего тест-кейсов:</td><td>{data['total_tc']}</td></tr>
+<tr><td>Успешно (Pass):</td><td class="status-pass">{data['pass']} ({pass_pct:.1f}%)</td></tr>
+<tr><td>Упали (Fail):</td><td class="status-fail">{data['fail']} ({fail_pct:.1f}%)</td></tr>
+<tr><td>Основной риск:</td><td class="risk">{escape_html(data['risk'])}</td></tr>
+<tr><td>Рекомендация:</td><td>{escape_html(data['recommendation'])}</td></tr>
+</table>
+
+<div class="chart-container">
+<img src="data:image/png;base64,{chart1}" alt="Распределение результатов тест-кейсов" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
+<div class="chart-title">Рис. 1. Распределение результатов тест-кейсов</div>
+</div>
+
+<div class="chart-container">
+<img src="data:image/png;base64,{chart2}" alt="Дефекты по уровню серьёзности" style="max-width: 100%; height: auto; display: block; margin: 0 auto;">
+<div class="chart-title">Рис. 2. Дефекты по уровню серьёзности</div>
+</div>
+
+<h2>2. КОНТЕКСТ ТЕСТИРОВАНИЯ</h2>
+
+<table class="context-table">
+<tr><td>Устройство / Браузер:</td><td>{escape_html(data['device_browser'])}</td></tr>
+<tr><td>ОС / Платформа:</td><td>{escape_html(data['os_platform'])}</td></tr>
+<tr><td>Сборка / Версия:</td><td>{escape_html(data['build'])}</td></tr>
+<tr><td>Стенд:</td><td>Тестовое окружение (адрес: {escape_html(data['env_url'])})</td></tr>
+<tr><td>Инструменты:</td><td>{escape_html(data['tools'])}</td></tr>
+<tr><td>Методология:</td><td>{escape_html(data['methodology'])}</td></tr>
+</table>
+"""
     
-    # Стили
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    header_font = Font(name='Calibri Light', size=11, bold=True, color="FFFFFF")
-    normal_font = Font(name='Calibri Light', size=11)
-    border = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
-    align_left = Alignment(horizontal='left', vertical='top', wrap_text=True)
-    align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
+    html += "<h2>3. РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ</h2>"
     
-    # Заголовок
-    ws.merge_cells('A1:D1')
-    ws['A1'] = data["report_title"]
-    ws['A1'].font = Font(name='Calibri Light', size=16, bold=True)
-    ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-    ws.row_dimensions[1].height = 30
-    ws.column_dimensions['A'].width = 15
-    ws.column_dimensions['B'].width = 40
-    ws.column_dimensions['C'].width = 15
-    ws.column_dimensions['D'].width = 40
+    for idx, module_info in enumerate(module_data_list):
+        html += f"<h3>3.{idx+1}. {escape_html(module_info['title'])}</h3>"
+        # Исправленные ширины колонок: Сценарий увеличен до 45%, Комментарий уменьшен до 28%
+        html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 45%;">Сценарий</th><th style="width: 12%;">Статус</th><th style="width: 28%;">Комментарий</th></tr>'
+        df = module_info['df']
+        if not df.empty and len(df.columns) >= 4:
+            for _, row in df.iterrows():
+                # Определяем CSS-класс для цветового выделения статуса
+                status_class = "status-pass" if str(row[2]).upper() == "PASS" else "status-fail" if str(row[2]).upper() == "FAIL" else ""
+                html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td class='{status_class}'>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td></tr>"
+        else:
+            html += "<tr><td colspan='4' style='text-align:center'>Нет данных</td></tr>"
+        html += "</table>"
     
-    row = 3
+    # Дефекты
+    html += "<h2>4. АНАЛИЗ ДЕФЕКТОВ</h2>"
+    html += '<table><tr><th style="width: 15%;">ID</th><th style="width: 15%;">Модуль</th><th>Заголовок</th><th style="width: 20%;">Серьёзность</th><th style="width: 15%;">Статус</th></tr>'
+    if not defects_df.empty and len(defects_df.columns) >= 5:
+        for _, row in defects_df.iterrows():
+            html += f"<tr><td>{escape_html(row[0])}</td><td>{escape_html(row[1])}</td><td>{escape_html(row[2])}</td><td>{escape_html(row[3])}</td><td>{escape_html(row[4])}</td></tr>"
+    else:
+        html += "<tr><td colspan='5' style='text-align:center'>Нет данных</td></tr>"
+    html += "</table>"
     
-    # Основная информация
-    ws.cell(row=row, column=1, value="ОСНОВНАЯ ИНФОРМАЦИЯ")
-    ws.cell(row=row, column=1).font = Font(name='Calibri Light', size=14, bold=True, color="4472C4")
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-    row += 1
+    # Последствия
+    html += f"<p><strong>Последствия:</strong> {format_multiline_html(data['consequences'])}</p>"
     
-    info_fields = [
-        ("Проект", data["project"]),
-        ("Тип приложения", data["app_type"]),
-        ("Версия", data["version"]),
-        ("Период тестирования", data["test_period"]),
-        ("Дата формирования отчёта", data["report_date"]),
-        ("Инженер по тестированию", data["engineer"]),
-        ("Статус релиза", data["release_status"]),
-    ]
-    
-    for label, value in info_fields:
-        ws.cell(row=row, column=1, value=label).font = Font(name='Calibri Light', size=11, bold=True)
-        ws.cell(row=row, column=2, value=value).font = normal_font
-        ws.cell(row=row, column=1).border = border
-        ws.cell(row=row, column=2).border = border
-        ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=4)
-        row += 1
-    
-    row += 1
-    
-    # Краткое резюме
-    ws.cell(row=row, column=1, value="КРАТКОЕ РЕЗЮМЕ")
-    ws.cell(row=row, column=1).font = Font(name='Calibri Light', size=14, bold=True, color="4472C4")
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-    row += 1
-    
-    metrics = [
-        ("Количество дефектов (S1)", data["s1"]),
-        ("Количество дефектов (S2)", data["s2"]),
-        ("Всего тест-кейсов", data["total_tc"]),
-        ("Пройдено успешно", data["pass"]),
-        ("Упало", data["fail"]),
-    ]
-    
-    for label, value in metrics:
-        ws.cell(row=row, column=1, value=label).font = Font(name='Calibri Light', size=11, bold=True)
-        ws.cell(row=row, column=2, value=value).font = normal_font
-        ws.cell(row=row, column=1).border = border
-        ws.cell(row=row, column=2).border = border
-        ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=4)
-        row += 1
-    
-    row += 1
-    
-    # Риски и рекомендации
-    if data["risk"].strip():
-        ws.cell(row=row, column=1, value="РИСКИ").font = Font(name='Calibri Light', size=12, bold=True)
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        row += 1
-        ws.cell(row=row, column=1, value=data["risk"]).font = normal_font
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        ws.cell(row=row, column=1).alignment = align_left
-        row += 2
-    
-    if data["recommendation"].strip():
-        ws.cell(row=row, column=1, value="РЕКОМЕНДАЦИИ").font = Font(name='Calibri Light', size=12, bold=True)
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        row += 1
-        ws.cell(row=row, column=1, value=data["recommendation"]).font = normal_font
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        ws.cell(row=row, column=1).alignment = align_left
-        row += 2
-    
-    # Результаты по модулям
-    ws.cell(row=row, column=1, value="РЕЗУЛЬТАТЫ ПО МОДУЛЯМ")
-    ws.cell(row=row, column=1).font = Font(name='Calibri Light', size=14, bold=True, color="4472C4")
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-    row += 1
-    
-    for module in module_data_list:
-        ws.cell(row=row, column=1, value=module["title"]).font = Font(name='Calibri Light', size=12, bold=True)
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        row += 1
-        
-        # Заголовки таблицы модуля
-        headers = ["ID", "Сценарий", "Статус", "Комментарий"]
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=row, column=col, value=header)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.border = border
-            cell.alignment = align_center
-        row += 1
-        
-        # Данные модуля
-        for _, r in module["df"].iterrows():
-            ws.cell(row=row, column=1, value=r["ID"]).font = normal_font
-            ws.cell(row=row, column=2, value=r["Сценарий"]).font = normal_font
-            status_cell = ws.cell(row=row, column=3, value=r["Статус"])
-            status_cell.font = normal_font
-            
-            # Цвет статуса
-            status_val = str(r["Статус"]).strip().upper() if pd.notna(r["Статус"]) else ""
-            if status_val == "PASS":
-                status_cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-                status_cell.font = Font(name='Calibri Light', size=11, bold=True, color="006100")
-            elif status_val == "FAIL":
-                status_cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-                status_cell.font = Font(name='Calibri Light', size=11, bold=True, color="9C0006")
-            
-            ws.cell(row=row, column=4, value=r["Комментарий"] if pd.notna(r["Комментарий"]) else "").font = normal_font
-            
-            for col in range(1, 5):
-                ws.cell(row=row, column=col).border = border
-                ws.cell(row=row, column=col).alignment = align_left
-            
-            row += 1
-        
-        row += 1
-    
-    # Анализ дефектов
-    if not defects_df.empty:
-        ws.cell(row=row, column=1, value="АНАЛИЗ ДЕФЕКТОВ")
-        ws.cell(row=row, column=1).font = Font(name='Calibri Light', size=14, bold=True, color="4472C4")
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        row += 1
-        
-        # Заголовки дефектов
-        defect_headers = ["ID", "Модуль", "Заголовок", "Серьёзность"]
-        for col, header in enumerate(defect_headers, 1):
-            cell = ws.cell(row=row, column=col, value=header)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.border = border
-            cell.alignment = align_center
-        row += 1
-        
-        # Данные дефектов
-        for _, r in defects_df.iterrows():
-            ws.cell(row=row, column=1, value=r["ID"]).font = normal_font
-            ws.cell(row=row, column=2, value=r["Модуль"]).font = normal_font
-            ws.cell(row=row, column=3, value=r["Заголовок"]).font = normal_font
-            
-            sev_cell = ws.cell(row=row, column=4, value=r["Серьёзность"])
-            sev_cell.font = normal_font
-            
-            # Цвет серьёзности
-            sev_val = str(r["Серьёзность"]).strip().upper() if pd.notna(r["Серьёзность"]) else ""
-            if sev_val == "S1":
-                sev_cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-                sev_cell.font = Font(name='Calibri Light', size=11, bold=True, color="9C0006")
-            elif sev_val == "S2":
-                sev_cell.fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
-                sev_cell.font = Font(name='Calibri Light', size=11, bold=True, color="9C5700")
-            
-            for col in range(1, 5):
-                ws.cell(row=row, column=col).border = border
-                ws.cell(row=row, column=col).alignment = align_left
-            
-            row += 1
-        
-        row += 1
-    
-    # Ограничения
-    if data["limitations"].strip():
-        ws.cell(row=row, column=1, value="ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ")
-        ws.cell(row=row, column=1).font = Font(name='Calibri Light', size=14, bold=True, color="4472C4")
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        row += 1
-        
-        lines = [line.strip() for line in data["limitations"].split('\n') if line.strip()]
-        for i, line in enumerate(lines, 1):
-            clean_line = line.lstrip('-*• ').strip()
-            ws.cell(row=row, column=1, value=f"{i}. {clean_line}").font = normal_font
-            ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-            ws.cell(row=row, column=1).alignment = align_left
-            row += 1
-        
-        row += 1
+    # Ограничения (нумерованный список!)
+    html += "<h2>5. ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ</h2><ol>"
+    for line in data['limitations'].split('\n'):
+        if line.strip():
+            html += f"<li>{escape_html(line.strip())}</li>"
+    html += "</ol>"
     
     # Вывод и рекомендации
-    ws.cell(row=row, column=1, value="ВЫВОД И РЕКОМЕНДАЦИИ")
-    ws.cell(row=row, column=1).font = Font(name='Calibri Light', size=14, bold=True, color="4472C4")
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-    row += 1
-    
-    if data["consequences"].strip():
-        ws.cell(row=row, column=1, value="Последствия дефектов").font = Font(name='Calibri Light', size=12, bold=True)
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        row += 1
-        ws.cell(row=row, column=1, value=data["consequences"]).font = normal_font
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        ws.cell(row=row, column=1).alignment = align_left
-        row += 2
-    
-    if data["conclusion"].strip():
-        ws.cell(row=row, column=1, value="Вывод").font = Font(name='Calibri Light', size=12, bold=True)
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        row += 1
-        ws.cell(row=row, column=1, value=data["conclusion"]).font = normal_font
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        ws.cell(row=row, column=1).alignment = align_left
-        row += 2
-    
-    if data["recommendations_detailed"].strip():
-        ws.cell(row=row, column=1, value="Рекомендации").font = Font(name='Calibri Light', size=12, bold=True)
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        row += 1
-        ws.cell(row=row, column=1, value=data["recommendations_detailed"]).font = normal_font
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-        ws.cell(row=row, column=1).alignment = align_left
-        row += 2
+    html += f"""
+<h2>6. ВЫВОД И РЕКОМЕНДАЦИИ</h2>
+<p><strong>Вывод:</strong> {escape_html(data['conclusion'])}</p>
+<p><strong>Рекомендации:</strong></p>
+<ul>
+"""
+    for line in data['recommendations_detailed'].split('\n'):
+        if line.strip():
+            html += f"<li>{escape_html(line.strip())}</li>"
+    html += "</ul>"
     
     # Подпись
-    ws.cell(row=row, column=1, value="ПОДПИСЬ")
-    ws.cell(row=row, column=1).font = Font(name='Calibri Light', size=14, bold=True, color="4472C4")
-    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
-    row += 1
-    
-    signature_fields = [
-        ("Роль", data["role"]),
-        ("ФИО", data["fullname"]),
-        ("Дата", data["signature_date"]),
-    ]
-    
-    for label, value in signature_fields:
-        ws.cell(row=row, column=1, value=label).font = Font(name='Calibri Light', size=11, bold=True)
-        ws.cell(row=row, column=2, value=value).font = normal_font
-        ws.cell(row=row, column=1).border = border
-        ws.cell(row=row, column=2).border = border
-        ws.merge_cells(start_row=row, start_column=3, end_row=row, end_column=4)
-        row += 1
-    
-    # Автоподбор высоты строк
-    for row_idx in range(1, row):
-        ws.row_dimensions[row_idx].height = 15
+    html += f"""
+<h2>7. ПОДПИСЬ</h2>
+<table class="signature-table">
+<tr><td>Роль:</td><td>{escape_html(data['role'])}</td></tr>
+<tr><td>ФИО:</td><td>{escape_html(data['fullname'])}</td></tr>
+<tr><td>Дата:</td><td>{escape_html(data['signature_date'])}</td></tr>
+</table>
+</body>
+</html>"""
     
     buffer = io.BytesIO()
-    wb.save(buffer)
+    buffer.write(html.encode('utf-8'))
     buffer.seek(0)
     return buffer
 
-# === ДАННЫЕ ПО УМОЛЧАНИЮ ===
+def generate_xlsx_single_sheet(data, module_data_list, defects_df):
+    """Генерирует Excel-отчёт с исправленными цветами (формат ARGB)"""
+    output = io.BytesIO()
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Отчёт о тестировании"
+    
+    COL_WIDTHS = {'A': 22, 'B': 14, 'C': 32, 'D': 12, 'E': 35}
+    
+    # 🔴 КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: цвета в формате ARGB (8 символов)
+    header_fill = PatternFill(start_color="FF4472C4", end_color="FF4472C4", fill_type="solid")
+    section_fill = PatternFill(start_color="FF5B9BD5", end_color="FF5B9BD5", fill_type="solid")
+    context_fill = PatternFill(start_color="FF70AD47", end_color="FF70AD47", fill_type="solid")
+    defects_fill = PatternFill(start_color="FF7030A0", end_color="FF7030A0", fill_type="solid")
+    notes_fill = PatternFill(start_color="FFFFC000", end_color="FFFFC000", fill_type="solid")
+    signature_fill = PatternFill(start_color="FF333333", end_color="FF333333", fill_type="solid")
+    pass_fill = PatternFill(start_color="FFC6EFCE", end_color="FFC6EFCE", fill_type="solid")
+    fail_fill = PatternFill(start_color="FFFFC7CE", end_color="FFFFC7CE", fill_type="solid")
+    
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin')
+    )
+    
+    wrap_left = Alignment(wrap_text=True, vertical="top", horizontal="left")
+    wrap_center = Alignment(wrap_text=True, vertical="center", horizontal="center")
+    wrap_right = Alignment(wrap_text=True, vertical="top", horizontal="right")
+    
+    row = 1
+    
+    # Заголовок
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value=data["report_title"])
+    cell.font = Font(name='Calibri Light', size=16, bold=True, color="FFFFFF")
+    cell.fill = header_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 2
+    
+    # Ключевые метрики
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="📊 КЛЮЧЕВЫЕ МЕТРИКИ")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = section_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    summary_rows = [
+        ["Проект", data["project"]],
+        ["Версия", data["version"]],
+        ["Период тестирования", data["test_period"]],
+        ["Всего тест-кейсов", str(data["total_tc"])],
+        ["Успешно (Pass)", f"{data['pass']} ({data['pass']/data['total_tc']*100:.1f}%)"],
+        ["Упали (Fail)", f"{data['fail']} ({data['fail']/data['total_tc']*100:.1f}%)"],
+        ["Critical (S1)", str(data["s1"])],
+        ["Major (S2)", str(data["s2"])],
+        ["Статус релиза", data["release_status"]],
+        ["Рекомендация", data["recommendation"]],
+    ]
+    
+    for label, value in summary_rows:
+        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=row, column=1, value=label).border = thin_border
+        ws.cell(row=row, column=1, value=label).alignment = wrap_right
+        ws.merge_cells(f'B{row}:E{row}')
+        cell_value = ws.cell(row=row, column=2, value=value)
+        cell_value.border = thin_border
+        cell_value.alignment = wrap_left
+        row += 1
+    
+    row += 1
+    
+    # Контекст тестирования
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="⚙️ КОНТЕКСТ ТЕСТИРОВАНИЯ")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = context_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    context_rows = [
+        ["Устройство / Браузер", data["device_browser"]],
+        ["ОС / Платформа", data["os_platform"]],
+        ["Сборка / Версия", data["build"]],
+        ["Стенд", data["env_url"].strip()],
+        ["Инструменты", data["tools"]],
+        ["Методология", data["methodology"]],
+        ["Тест-инженер", data["engineer"]],
+        ["Дата формирования", data["report_date"]],
+    ]
+    
+    for label, value in context_rows:
+        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=row, column=1, value=label).border = thin_border
+        ws.cell(row=row, column=1, value=label).alignment = wrap_right
+        ws.merge_cells(f'B{row}:E{row}')
+        cell_value = ws.cell(row=row, column=2, value=value)
+        cell_value.border = thin_border
+        cell_value.alignment = wrap_left
+        row += 1
+    
+    row += 1
+    
+    # Результаты по модулям
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="✅ РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ ПО МОДУЛЯМ")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = section_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    test_headers = ["Модуль", "ID", "Сценарий", "Статус", "Комментарий"]
+    for col_idx, header in enumerate(test_headers, start=1):
+        cell = ws.cell(row=row, column=col_idx, value=header)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.border = thin_border
+        cell.alignment = wrap_center
+    row += 1
+    
+    for module_info in module_data_list:
+        module_name = module_info['title']
+        df = module_info['df']
+        if not df.empty and len(df.columns) >= 4:
+            for _, test_row in df.iterrows():
+                ws.cell(row=row, column=1, value=module_name).border = thin_border
+                ws.cell(row=row, column=1, value=module_name).alignment = wrap_left
+                ws.cell(row=row, column=2, value=test_row[0]).border = thin_border
+                ws.cell(row=row, column=2, value=test_row[0]).alignment = wrap_center
+                ws.cell(row=row, column=3, value=test_row[1]).border = thin_border
+                ws.cell(row=row, column=3, value=test_row[1]).alignment = wrap_left
+                status_cell = ws.cell(row=row, column=4, value=test_row[2])
+                status_cell.border = thin_border
+                status_cell.alignment = wrap_center
+                if str(test_row[2]).upper() == "PASS":
+                    status_cell.fill = pass_fill
+                    status_cell.font = Font(color="006100", bold=True)
+                elif str(test_row[2]).upper() == "FAIL":
+                    status_cell.fill = fail_fill
+                    status_cell.font = Font(color="9C0006", bold=True)
+                ws.cell(row=row, column=5, value=test_row[3]).border = thin_border
+                ws.cell(row=row, column=5, value=test_row[3]).alignment = wrap_left
+                row += 1
+        else:
+            ws.merge_cells(f'A{row}:E{row}')
+            cell = ws.cell(row=row, column=1, value=f"Нет данных для модуля: {module_name}")
+            cell.alignment = wrap_center
+            cell.border = thin_border
+            row += 1
+    
+    row += 1
+    
+    # Анализ дефектов
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="🐞 АНАЛИЗ ДЕФЕКТОВ")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = defects_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    defect_headers = ["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"]
+    for col_idx, header in enumerate(defect_headers, start=1):
+        cell = ws.cell(row=row, column=col_idx, value=header)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.border = thin_border
+        cell.alignment = wrap_center
+    row += 1
+    
+    if not defects_df.empty and len(defects_df.columns) >= 5:
+        for _, defect_row in defects_df.iterrows():
+            for col_idx, value in enumerate(defect_row, start=1):
+                cell = ws.cell(row=row, column=col_idx, value=value if pd.notna(value) else "—")
+                cell.border = thin_border
+                cell.alignment = wrap_left if col_idx in (3, 5) else wrap_center
+            row += 1
+    else:
+        ws.merge_cells(f'A{row}:E{row}')
+        cell = ws.cell(row=row, column=1, value="Нет зарегистрированных дефектов")
+        cell.alignment = wrap_center
+        cell.border = thin_border
+        row += 1
+    
+    row += 1
+    
+    # Ограничения, вывод, рекомендации
+    sections = [
+        ("⚠️ ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ", data["limitations"]),
+        ("💡 ВЫВОД", data["conclusion"]),
+        ("📌 РЕКОМЕНДАЦИИ", data["recommendations_detailed"]),
+    ]
+    
+    for title, content in sections:
+        ws.merge_cells(f'A{row}:E{row}')
+        cell = ws.cell(row=row, column=1, value=title)
+        cell.font = Font(bold=True, size=12, color="FFFFFF")
+        cell.fill = notes_fill
+        cell.alignment = wrap_center
+        for col in range(1, 6):
+            ws.cell(row=row, column=col).border = thin_border
+        row += 1
+        
+        for line in content.split('\n'):
+            if line.strip():
+                ws.merge_cells(f'A{row}:E{row}')
+                cell = ws.cell(row=row, column=1, value=line.strip())
+                cell.alignment = wrap_left
+                cell.border = thin_border
+                row += 1
+    
+    row += 1
+    
+    # Подпись
+    ws.merge_cells(f'A{row}:E{row}')
+    cell = ws.cell(row=row, column=1, value="Подпись")
+    cell.font = Font(bold=True, size=12, color="FFFFFF")
+    cell.fill = signature_fill
+    cell.alignment = wrap_center
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).border = thin_border
+    row += 1
+    
+    signature_rows = [
+        ["Роль", data["role"]],
+        ["ФИО", data["fullname"]],
+        ["Дата", data["signature_date"]],
+    ]
+    
+    for label, value in signature_rows:
+        ws.cell(row=row, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=row, column=1, value=label).border = thin_border
+        ws.cell(row=row, column=1, value=label).alignment = wrap_right
+        ws.merge_cells(f'B{row}:E{row}')
+        cell_value = ws.cell(row=row, column=2, value=value)
+        cell_value.border = thin_border
+        cell_value.alignment = wrap_left
+        row += 1
+    
+    for col_letter, width in COL_WIDTHS.items():
+        ws.column_dimensions[col_letter].width = width
+    
+    wb.save(output)
+    output.seek(0)
+    return output
+
+# === ДАННЫЕ ПО УМОЛЧАНИЮ (точно как в образце PDF) ===
 default_modules = [
     {
-        "title": "Авторизация и регистрация",
+        "title": "Главный экран и навигация",
         "df": pd.DataFrame([
-            {"ID": "AUTH-001", "Сценарий": "Вход по валидным данным", "Статус": "PASS", "Комментарий": ""},
-            {"ID": "AUTH-002", "Сценарий": "Вход по невалидным данным", "Статус": "PASS", "Комментарий": ""},
-            {"ID": "AUTH-003", "Сценарий": "Восстановление пароля", "Статус": "FAIL", "Комментарий": "Письмо не приходит на почту"},
-        ])
+            ["MAIN-01", "Отображение карточек товаров", "PASS", "—"],
+            ["MAIN-02", "Фильтрация по категориям", "PASS", "—"],
+            ["NAV-01", "Переход между разделами", "PASS", "—"],
+            ["NAV-02", "Поиск товара с опечаткой", "FAIL", "BUG-SEARCH-001. Не находятся товары при ошибке в 1 символе (например, «мыло» → «мылоо»)"]
+        ], columns=["ID", "Сценарий", "Статус", "Комментарий"])
     },
     {
-        "title": "Поиск товаров",
+        "title": "Аутентификация и безопасность",
         "df": pd.DataFrame([
-            {"ID": "SEARCH-001", "Сценарий": "Поиск по точному названию", "Статус": "PASS", "Комментарий": ""},
-            {"ID": "SEARCH-002", "Сценарий": "Поиск с опечаткой", "Статус": "FAIL", "Комментарий": "Fuzzy search не работает"},
-        ])
+            ["AUTH-01", "Вход по логину/паролю", "PASS", "—"],
+            ["SEC-01", "SQL-инъекция в поле поиска", "FAIL", "BUG-SEC-001. При вводе `' OR '1'='1` — белый экран, частичный краш"],
+            ["SEC-02", "XSS-атака через поле поиска", "FAIL", "BUG-SEC-002. При вводе `<script>alert(1)</script>` — выполнение скрипта"]
+        ], columns=["ID", "Сценарий", "Статус", "Комментарий"])
+    },
+    {
+        "title": "Каталог и корзина",
+        "df": pd.DataFrame([
+            ["CATALOG-01", "Отображение списка товаров", "PASS", "—"],
+            ["CART-01", "Добавление в корзину", "PASS", "—"],
+            ["CART-02", "Оформление заказа", "PASS", "—"]
+        ], columns=["ID", "Сценарий", "Статус", "Комментарий"])
+    },
+    {
+        "title": "Дополнительные сценарии",
+        "df": pd.DataFrame([
+            ["OFFLINE-01", "Работа без интернета", "PASS", "Кэширование работает корректно"],
+            ["SPECIAL-01", "Поиск со спецсимволами (@, #, $)", "PASS", "—"]
+        ], columns=["ID", "Сценарий", "Статус", "Комментарий"])
     }
 ]
 
 default_defects = pd.DataFrame([
-    {"ID": "BUG-SEC-001", "Модуль": "Авторизация", "Заголовок": "SQL-инъекция в поле логина", "Серьёзность": "S1", "Статус": "Открыт"},
-    {"ID": "BUG-SEC-002", "Модуль": "Авторизация", "Заголовок": "Пароли хранятся в открытом виде", "Серьёзность": "S1", "Статус": "Открыт"},
-    {"ID": "BUG-SEARCH-001", "Модуль": "Поиск", "Заголовок": "Нет поддержки опечаток", "Серьёзность": "S2", "Статус": "Открыт"},
-])
+    ["BUG-SEARCH-001", "Поиск", "Не работает fuzzy search (поиск с опечатками)", "Major (S2)", "New"],
+    ["BUG-SEC-001", "Безопасность", "Уязвимость к SQL-инъекциям в поле поиска", "Critical (S1)", "New"],
+    ["BUG-SEC-002", "Безопасность", "Уязвимость к XSS-атакам в поле поиска", "Critical (S1)", "New"]
+], columns=["ID", "Модуль", "Заголовок", "Серьёзность", "Статус"])
 
-# === ИНТЕРФЕЙС STREAMLIT ===
+# === ИНТЕРФЕЙС STREAMLIT (структура как в отчёте из PDF) ===
 st.set_page_config(page_title="Генератор отчёта", layout="wide")
 
 # === ЗАГРУЗКА ЧЕРНОВИКА (ВНЕ ФОРМЫ!) ===
-st.title("📄 Генератор профессиональных тестовых отчётов")
-st.markdown("""
-Создавайте отчёты о тестировании в трёх форматах (DOCX, HTML, XLSX) с соблюдением корпоративных стандартов.
-Сохраняйте черновики и возвращайтесь к ним позже!
-""")
+st.title("📄 Отчёт о тестировании")
 
-# Кнопка загрузки черновика ВНЕ формы
 uploaded_file = st.file_uploader(
     "⬆️ Загрузить черновик (.json)",
     type=["json"],
@@ -1017,7 +1013,6 @@ if uploaded_file is not None:
         st.rerun()
 
 # === ПОДГОТОВКА ДАННЫХ ДЛЯ ФОРМЫ ===
-# Инициализация значений по умолчанию или из черновика
 if "draft_data" in st.session_state and st.session_state.draft_data is not None:
     draft_data = st.session_state.draft_data
     draft_modules = st.session_state.draft_modules
@@ -1098,124 +1093,135 @@ else:
     fullname_val = "Черкасов Игорь"
     signature_date_val = "30.11.2025"
 
-# === ФОРМА ВВОДА ДАННЫХ ===
 with st.form("main_form"):
-    # Заголовок и основная информация
-    st.subheader("1. Заголовок и основная информация")
-    
-    report_title = st.text_input("Название отчёта", report_title_val)
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        project = st.text_input("Проект", project_val)
-        app_type = st.selectbox("Тип приложения", ["Мобильное", "Веб"], 
-                               index=0 if app_type_val == "Мобильное" else 1)
-    with col2:
-        version = st.text_input("Версия", version_val)
-        test_period = st.text_input("Период тестирования", test_period_val)
-    with col3:
-        report_date = st.text_input("Дата формирования отчёта", report_date_val)
-        engineer = st.text_input("Инженер по тестированию", engineer_val)
-    
-    release_status = st.selectbox(
-        "Статус релиза",
-        ["НЕ РЕКОМЕНДОВАН К ВЫПУСКУ", "РЕКОМЕНДОВАН К ВЫПУСКУ С ЗАМЕЧАНИЯМИ", "РЕКОМЕНДОВАН К ВЫПУСКУ"],
-        index=["НЕ РЕКОМЕНДОВАН К ВЫПУСКУ", "РЕКОМЕНДОВАН К ВЫПУСКУ С ЗАМЕЧАНИЯМИ", "РЕКОМЕНДОВАН К ВЫПУСКУ"].index(release_status_val)
+    # === ЗАГОЛОВОК ОТЧЁТА ===
+    report_title = st.text_input(
+        "Название отчёта",
+        report_title_val
     )
     
-    # Метрики
-    st.subheader("2. Метрики тестирования")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        s1 = st.number_input("Дефекты S1", min_value=0, value=s1_val)
-    with col2:
-        s2 = st.number_input("Дефекты S2", min_value=0, value=s2_val)
-    with col3:
-        total_tc = st.number_input("Всего тест-кейсов", min_value=0, value=total_tc_val)
-    with col4:
-        pass_tc = st.number_input("Пройдено успешно (PASS)", min_value=0, value=pass_tc_val)
-    fail_tc = st.number_input("Упало (FAIL)", min_value=0, value=fail_tc_val)
+    # === ОСНОВНАЯ ИНФОРМАЦИЯ (отдельная секция ДО раздела 1, как в PDF) ===
+    st.subheader("Основная информация")
+    col_info1, col_info2 = st.columns(2)
+    with col_info1:
+        project = st.text_input("Проект", project_val)
+        app_type = st.selectbox("Тип приложения", ["Мобильное", "Веб-приложение"], 
+                               index=0 if app_type_val == "Мобильное" else 1)
+        version = st.text_input("Версия приложения", version_val)
+    with col_info2:
+        test_period = st.text_input("Период тестирования", test_period_val)
+        report_date = st.text_input("Дата формирования отчёта", report_date_val)
+        engineer = st.text_input("Тест-инженер", engineer_val)
     
-    # Риски и рекомендации
-    risk = st.text_area("Риски", risk_val, height=80)
-    recommendation = st.text_area("Краткие рекомендации", recommendation_val, height=60)
-    
-    # Контекст тестирования
-    st.subheader("3. Контекст тестирования")
+    # === РАЗДЕЛ 1: КРАТКОЕ РЕЗЮМЕ (только данные резюме, как в таблице из PDF) ===
+    st.header("1. Краткое резюме")
     col1, col2 = st.columns(2)
     with col1:
+        release_status = st.selectbox("Статус релиза", ["НЕ РЕКОМЕНДОВАН К ВЫПУСКУ", "РЕКОМЕНДОВАН К ВЫПУСКУ"], 
+                                     index=["НЕ РЕКОМЕНДОВАН К ВЫПУСКУ", "РЕКОМЕНДОВАН К ВЫПУСКУ"].index(release_status_val))
+        s1 = st.number_input("Критические дефекты (S1)", min_value=0, value=s1_val)
+        s2 = st.number_input("Мажорные дефекты (S2)", min_value=0, value=s2_val)
+    with col2:
+        total_tc = st.number_input("Всего тест-кейсов", min_value=1, value=total_tc_val)
+        pass_tc = st.number_input("Успешно (Pass)", min_value=0, value=pass_tc_val)
+        fail_tc = st.number_input("Упали (Fail)", min_value=0, value=fail_tc_val)
+    
+    # Риски и рекомендации — под таблицами (как в образце)
+    risk = st.text_area(
+        "Основной риск",
+        risk_val
+    )
+    recommendation = st.text_area(
+        "Рекомендация",
+        recommendation_val
+    )
+    
+    # === РАЗДЕЛ 2: КОНТЕКСТ ТЕСТИРОВАНИЯ ===
+    st.header("2. Контекст тестирования")
+    col3, col4 = st.columns(2)
+    with col3:
         device_browser = st.text_input("Устройство / Браузер", device_browser_val)
         os_platform = st.text_input("ОС / Платформа", os_platform_val)
-        build = st.text_input("Сборка", build_val)
-        env_url = st.text_input("URL окружения", env_url_val)
-    with col2:
-        tools = st.text_area("Инструменты", tools_val, height=100)
-        methodology = st.text_area("Методология тестирования", methodology_val, height=100)
+        build = st.text_input("Сборка / Версия", build_val)
+    with col4:
+        env_url = st.text_input("URL стенда", env_url_val)
+        tools = st.text_input("Инструменты", tools_val)
+        methodology = st.text_input("Методология", methodology_val)
     
-    # Результаты по модулям
-    st.subheader("4. Результаты по модулям")
+    # === РАЗДЕЛ 3: РЕЗУЛЬТАТЫ ПО МОДУЛЯМ ===
+    st.header("3. Результаты тестирования по модулям")
+    num_modules = st.slider("Количество модулей", min_value=1, max_value=10, value=4)
     module_data_list = []
-    
-    for i, mod in enumerate(default_modules if "draft_modules" not in st.session_state else draft_modules):
-        with st.expander(f"Модуль {i+1}: {mod['title']}", expanded=False):
-            title = st.text_input(f"Название модуля {i+1}", mod["title"], key=f"title_{i}")
-            df_edited = st.data_editor(
-                mod["df"],
+    for i in range(num_modules):
+        with st.expander(f"Модуль 3.{i+1}", expanded=True):
+            title = st.text_input(
+                f"Название модуля 3.{i+1}",
+                value=draft_modules[i]["title"] if "draft_modules" in st.session_state and i < len(draft_modules) else default_modules[i]["title"] if i < len(default_modules) else f"Модуль 3.{i+1}",
+                key=f"title_{i}"
+            )
+            df_key = f"mod_{i}"
+            default_df = draft_modules[i]["df"] if "draft_modules" in st.session_state and i < len(draft_modules) else default_modules[i]["df"] if i < len(default_modules) else pd.DataFrame(columns=["ID", "Сценарий", "Статус", "Комментарий"])
+            df = st.data_editor(
+                default_df,
+                num_rows="dynamic",
+                key=df_key,
                 column_config={
                     "ID": st.column_config.TextColumn("ID", width="small"),
                     "Сценарий": st.column_config.TextColumn("Сценарий", width="medium"),
-                    "Статус": st.column_config.SelectboxColumn("Статус", options=["PASS", "FAIL", "SKIP"], width="small"),
-                    "Комментарий": st.column_config.TextColumn("Комментарий", width="large"),
-                },
-                hide_index=True,
-                key=f"module_{i}",
-                use_container_width=True,
-                num_rows="dynamic"
+                    "Статус": st.column_config.SelectboxColumn("Статус", options=["PASS", "FAIL"], width="small"),
+                    "Комментарий": st.column_config.TextColumn("Комментарий", width="large")
+                }
             )
-            module_data_list.append({"title": title, "df": df_edited})
+            module_data_list.append({"title": title, "df": df})
     
-    # Анализ дефектов
-    st.subheader("5. Анализ дефектов")
+    # === РАЗДЕЛ 4: АНАЛИЗ ДЕФЕКТОВ ===
+    st.header("4. Анализ дефектов")
     defects = st.data_editor(
-        default_defects if "draft_defects" not in st.session_state else draft_defects,
+        draft_defects if "draft_defects" in st.session_state else default_defects,
+        num_rows="dynamic",
+        key="defects",
         column_config={
             "ID": st.column_config.TextColumn("ID", width="small"),
             "Модуль": st.column_config.TextColumn("Модуль", width="small"),
             "Заголовок": st.column_config.TextColumn("Заголовок", width="medium"),
-            "Серьёзность": st.column_config.SelectboxColumn("Серьёзность", options=["S1", "S2", "S3", "S4"], width="small"),
-            "Статус": st.column_config.TextColumn("Статус", width="small"),
-        },
-        hide_index=True,
-        use_container_width=True,
-        num_rows="dynamic"
+            "Серьёзность": st.column_config.SelectboxColumn("Серьёзность", options=["Critical (S1)", "Major (S2)", "Minor (S3)"], width="small"),
+            "Статус": st.column_config.SelectboxColumn("Статус", options=["New", "Open", "Fixed", "Closed"], width="small")
+        }
+    )
+    consequences = st.text_area(
+        "Последствия",
+        consequences_val
     )
     
-    # Ограничения и вывод
-    st.subheader("6. Ограничения и вывод")
+    # === РАЗДЕЛ 5: ОГРАНИЧЕНИЯ ТЕСТИРОВАНИЯ ===
+    st.header("5. Ограничения тестирования")
     limitations = st.text_area(
-        "Ограничения тестирования (нумерованный список)",
-        limitations_val,
-        height=120,
-        help="Введите по одному ограничению на строку. Маркеры будут автоматически преобразованы в нумерацию."
+        "Ограничения тестирования",
+        limitations_val
     )
-    consequences = st.text_area("Последствия дефектов", consequences_val, height=100)
-    conclusion = st.text_area("Вывод", conclusion_val, height=100)
-    recommendations_detailed = st.text_area("Детальные рекомендации", recommendations_detailed_val, height=100)
     
-    # Подпись
-    st.subheader("7. Подпись")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        role = st.text_input("Роль", role_val)
-    with col2:
-        fullname = st.text_input("ФИО", fullname_val)
-    with col3:
-        signature_date = st.text_input("Дата", signature_date_val)
+    # === РАЗДЕЛ 6: ВЫВОД И РЕКОМЕНДАЦИИ ===
+    st.header("6. Вывод и рекомендации")
+    conclusion = st.text_area(
+        "Вывод",
+        conclusion_val
+    )
+    recommendations_detailed = st.text_area(
+        "Рекомендации (подробно)",
+        recommendations_detailed_val
+    )
+    
+    # === РАЗДЕЛ 7: ПОДПИСЬ ===
+    st.header("7. Подпись")
+    role = st.text_input("Роль", role_val)
+    fullname = st.text_input("ФИО", fullname_val)
+    signature_date = st.text_input("Дата", signature_date_val)
     
     # === КНОПКИ ФОРМЫ ===
-    col1, col2 = st.columns(2)
-    with col1:
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
         save_draft_clicked = st.form_submit_button("💾 Сохранить черновик", type="secondary")
-    with col2:
+    with col_btn2:
         submitted = st.form_submit_button("📥 Создать отчёт", type="primary")
 
 # === ОБРАБОТКА КНОПОК (ВНЕ ФОРМЫ!) ===
@@ -1275,7 +1281,34 @@ if "draft_to_download" in st.session_state and st.session_state.draft_to_downloa
 
 # === ГЕНЕРАЦИЯ ОТЧЁТА ===
 if submitted:
-    # Сбор данных
+    validation_errors = []
+    # 🔴 КРИТИЧЕСКАЯ ВАЛИДАЦИЯ
+    if pass_tc + fail_tc != total_tc:
+        validation_errors.append(
+            f"⚠️ Сумма статусов ({pass_tc} PASS + {fail_tc} FAIL = {pass_tc + fail_tc}) "
+            f"не равна общему количеству тест-кейсов ({total_tc})"
+        )
+    if total_tc <= 0:
+        validation_errors.append("❌ Общее количество тест-кейсов должно быть больше 0")
+    if s1 < 0 or s2 < 0:
+        validation_errors.append("❌ Количество дефектов не может быть отрицательным")
+    if not report_title.strip():
+        validation_errors.append("❌ Название отчёта не может быть пустым")
+    # Проверка обязательных полей
+    required_fields = ['project', 'version', 'env_url', 'engineer', 'test_period', 'report_date']
+    field_values = {
+        'project': project, 'version': version, 'env_url': env_url,
+        'engineer': engineer, 'test_period': test_period, 'report_date': report_date
+    }
+    for field in required_fields:
+        if not field_values[field].strip():
+            validation_errors.append(f"❌ Поле '{field}' не может быть пустым")
+    
+    if validation_errors:
+        for error in validation_errors:
+            st.error(error)
+        st.stop()
+    
     data = {
         "report_title": report_title,
         "project": project,
@@ -1307,60 +1340,40 @@ if submitted:
         "signature_date": signature_date,
     }
     
-    # Валидация
-    validation_errors = []
-    if pass_tc + fail_tc != total_tc:
-        validation_errors.append("⚠️ Сумма статусов (PASS + FAIL) не равна общему количеству тест-кейсов")
-    
-    if validation_errors:
-        for err in validation_errors:
-            st.error(err)
-        st.stop()
-    
-    # Генерация отчётов
-    with st.spinner("Генерация отчётов..."):
-        # DOCX
+    try:
         docx_buffer = generate_docx(data, module_data_list, defects)
-        
-        # HTML
-        html_content = generate_html_report(data, module_data_list, defects)
-        html_buffer = io.BytesIO(html_content.encode('utf-8'))
-        
-        # XLSX
+        html_buffer = generate_html_report(data, module_data_list, defects)
         xlsx_buffer = generate_xlsx_single_sheet(data, module_data_list, defects)
-    
-    # Отображение кнопок загрузки
-    st.success("✅ Отчёты успешно сгенерированы!")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.download_button(
-            "📄 Скачать DOCX",
-            docx_buffer,
-            "отчёт_тестирование.docx",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True
-        )
-    
-    with col2:
-        st.download_button(
-            "🌐 Скачать HTML",
-            html_buffer,
-            "отчёт_тестирование.html",
-            "text/html",
-            use_container_width=True
-        )
-    
-    with col3:
-        st.download_button(
-            "📊 Скачать XLSX",
-            xlsx_buffer,
-            "отчёт_тестирование.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-    
-    # Предпросмотр HTML
-    with st.expander("🔍 Предпросмотр HTML-отчёта"):
-        st.components.v1.html(html_content, height=600, scrolling=True)
+        
+        st.success("✅ Отчёт успешно создан!")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.download_button(
+                "📄 DOCX",
+                docx_buffer,
+                "Отчёт_о_тестировании.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+                type="primary"
+            )
+        with col2:
+            st.download_button(
+                "🌐 HTML",
+                html_buffer,
+                "Отчёт_о_тестировании.html",
+                "text/html",
+                use_container_width=True
+            )
+        with col3:
+            st.download_button(
+                "📊 XLSX",
+                xlsx_buffer,
+                "Отчёт_о_тестировании.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+    except Exception as e:
+        st.error(f"❌ Ошибка генерации отчёта: {str(e)}")
+        with st.expander("Детали ошибки (для отладки)"):
+            st.code(traceback.format_exc())
