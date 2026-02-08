@@ -1193,77 +1193,85 @@ with st.form("main_form"):
     with col3:
         signature_date = st.text_input("Дата", signature_date_val)
     
-    # === УПРАВЛЕНИЕ ЧЕРНОВИКАМИ ===
-    st.markdown("---")
-    st.subheader("💾 Работа с черновиками")
+# === УПРАВЛЕНИЕ ЧЕРНОВИКАМИ ===
+st.markdown("---")
+st.subheader("💾 Работа с черновиками")
     
-    col_save, col_load = st.columns([1, 2])
-    
-    with col_save:
-        if st.form_submit_button("💾 Сохранить черновик", type="secondary"):
-            # Собираем данные из текущей формы
-            data = {
-                "report_title": report_title,
-                "project": project,
-                "app_type": app_type,
-                "version": version,
-                "test_period": test_period,
-                "report_date": report_date,
-                "engineer": engineer,
-                "release_status": release_status,
-                "s1": s1,
-                "s2": s2,
-                "total_tc": total_tc,
-                "pass": pass_tc,
-                "fail": fail_tc,
-                "device_browser": device_browser,
-                "os_platform": os_platform,
-                "build": build,
-                "env_url": env_url.strip(),
-                "tools": tools,
-                "methodology": methodology,
-                "risk": risk,
-                "recommendation": recommendation,
-                "consequences": consequences,
-                "limitations": limitations,
-                "conclusion": conclusion,
-                "recommendations_detailed": recommendations_detailed,
-                "role": role,
-                "fullname": fullname,
-                "signature_date": signature_date,
-            }
-            
-            draft_json = save_draft(data, module_data_list, defects)
-            st.download_button(
-                "⬇️ Скачать черновик.json",
-                draft_json,
-                "черновик_отчёта.json",
-                "application/json",
-                use_container_width=True
-            )
-            st.info("✅ Черновик подготовлен к скачиванию. Нажмите кнопку выше, чтобы сохранить на устройство.")
-            st.stop()  # Останавливаем выполнение
-    
-    with col_load:
-        uploaded_file = st.file_uploader(
-            "⬆️ Загрузить черновик (.json)",
-            type=["json"],
-            label_visibility="collapsed",
-            key="draft_uploader"
-        )
-        if uploaded_file is not None:
-            content = uploaded_file.read().decode("utf-8")
-            restored_data, restored_modules, restored_defects, saved_at = load_draft(content)
-            if restored_data is not None:
-                # Сохраняем восстановленные данные в session_state
-                st.session_state.draft_data = restored_data
-                st.session_state.draft_modules = restored_modules
-                st.session_state.draft_defects = restored_defects
-                st.session_state.draft_saved_at = saved_at
-                st.rerun()  # Перезагружаем страницу
-    
-    # === КНОПКА СОЗДАНИЯ ОТЧЁТА ===
-    submitted = st.form_submit_button("📥 Создать отчёт", type="primary")
+col_save, col_load = st.columns([1, 2])
+
+with col_save:
+    save_draft_clicked = st.form_submit_button("💾 Сохранить черновик", type="secondary")
+    if save_draft_clicked:
+        # Собираем данные из текущей формы
+        data = {
+            "report_title": report_title,
+            "project": project,
+            "app_type": app_type,
+            "version": version,
+            "test_period": test_period,
+            "report_date": report_date,
+            "engineer": engineer,
+            "release_status": release_status,
+            "s1": s1,
+            "s2": s2,
+            "total_tc": total_tc,
+            "pass": pass_tc,
+            "fail": fail_tc,
+            "device_browser": device_browser,
+            "os_platform": os_platform,
+            "build": build,
+            "env_url": env_url.strip(),
+            "tools": tools,
+            "methodology": methodology,
+            "risk": risk,
+            "recommendation": recommendation,
+            "consequences": consequences,
+            "limitations": limitations,
+            "conclusion": conclusion,
+            "recommendations_detailed": recommendations_detailed,
+            "role": role,
+            "fullname": fullname,
+            "signature_date": signature_date,
+        }
+        
+        draft_json = save_draft(data, module_data_list, defects)
+        st.session_state.draft_to_download = draft_json
+        st.session_state.draft_filename = f"черновик_{datetime.now().strftime('%d%m%Y_%H%M%S')}.json"
+        st.success("✅ Черновик подготовлен к скачиванию!")
+        st.rerun()
+
+with col_load:
+    uploaded_file = st.file_uploader(
+        "⬆️ Загрузить черновик (.json)",
+        type=["json"],
+        label_visibility="collapsed",
+        key="draft_uploader"
+    )
+    if uploaded_file is not None:
+        content = uploaded_file.read().decode("utf-8")
+        restored_data, restored_modules, restored_defects, saved_at = load_draft(content)
+        if restored_data is not None:
+            # Сохраняем восстановленные данные в session_state
+            st.session_state.draft_data = restored_data
+            st.session_state.draft_modules = restored_modules
+            st.session_state.draft_defects = restored_defects
+            st.session_state.draft_saved_at = saved_at
+            st.rerun()  # Перезагружаем страницу
+
+# === КНОПКА СКАЧИВАНИЯ ЧЕРНОВИКА (ВНЕ ФОРМЫ!) ===
+if "draft_to_download" in st.session_state and st.session_state.draft_to_download is not None:
+    st.download_button(
+        "⬇️ Скачать черновик",
+        st.session_state.draft_to_download,
+        st.session_state.draft_filename,
+        "application/json",
+        use_container_width=True,
+        type="primary"
+    )
+    if st.button("Закрыть", key="close_draft"):
+        del st.session_state.draft_to_download
+        del st.session_state.draft_filename
+        st.rerun()
 
 # === ГЕНЕРАЦИЯ ОТЧЁТА ===
 if submitted:
