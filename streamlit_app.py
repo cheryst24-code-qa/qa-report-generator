@@ -991,7 +991,32 @@ default_defects = pd.DataFrame([
 # === ИНТЕРФЕЙС STREAMLIT ===
 st.set_page_config(page_title="Генератор отчёта", layout="wide")
 
-# === АВТОМАТИЧЕСКАЯ ЗАГРУЗКА ЧЕРНОВИКА ИЗ SESSION_STATE ===
+# === ЗАГРУЗКА ЧЕРНОВИКА (ВНЕ ФОРМЫ!) ===
+st.title("📄 Генератор профессиональных тестовых отчётов")
+st.markdown("""
+Создавайте отчёты о тестировании в трёх форматах (DOCX, HTML, XLSX) с соблюдением корпоративных стандартов.
+Сохраняйте черновики и возвращайтесь к ним позже!
+""")
+
+# Кнопка загрузки черновика ВНЕ формы
+uploaded_file = st.file_uploader(
+    "⬆️ Загрузить черновик (.json)",
+    type=["json"],
+    label_visibility="visible",
+    key="draft_uploader_outside_form"
+)
+if uploaded_file is not None:
+    content = uploaded_file.read().decode("utf-8")
+    restored_data, restored_modules, restored_defects, saved_at = load_draft(content)
+    if restored_data is not None:
+        st.session_state.draft_data = restored_data
+        st.session_state.draft_modules = restored_modules
+        st.session_state.draft_defects = restored_defects
+        st.session_state.draft_saved_at = saved_at
+        st.success(f"✅ Черновик загружен! Сохранён: {saved_at}")
+        st.rerun()
+
+# === ПОДГОТОВКА ДАННЫХ ДЛЯ ФОРМЫ ===
 if "draft_data" in st.session_state and st.session_state.draft_data is not None:
     draft_data = st.session_state.draft_data
     draft_modules = st.session_state.draft_modules
@@ -1037,8 +1062,6 @@ if "draft_data" in st.session_state and st.session_state.draft_data is not None:
     del st.session_state.draft_modules
     del st.session_state.draft_defects
     del st.session_state.draft_saved_at
-    
-    st.success(f"✅ Черновик загружен! Сохранён: {draft_saved_at}")
 else:
     # Значения по умолчанию
     report_title_val = "Отчёт о тестировании мобильного приложения Лемана ПРО"
@@ -1073,12 +1096,6 @@ else:
     role_val = "QA-инженер"
     fullname_val = "Черкасов Игорь"
     signature_date_val = "30.11.2025"
-
-st.title("📄 Генератор профессиональных тестовых отчётов")
-st.markdown("""
-Создавайте отчёты о тестировании в трёх форматах (DOCX, HTML, XLSX) с соблюдением корпоративных стандартов.
-Сохраняйте черновики и возвращайтесь к ним позже!
-""")
 
 # === ФОРМА ВВОДА ДАННЫХ ===
 with st.form("main_form"):
@@ -1158,7 +1175,7 @@ with st.form("main_form"):
     # Анализ дефектов
     st.subheader("5. Анализ дефектов")
     defects = st.data_editor(
-        default_defects,
+        default_defects if "draft_defects" not in st.session_state else draft_defects,
         column_config={
             "ID": st.column_config.TextColumn("ID", width="small"),
             "Модуль": st.column_config.TextColumn("Модуль", width="small"),
@@ -1193,72 +1210,54 @@ with st.form("main_form"):
     with col3:
         signature_date = st.text_input("Дата", signature_date_val)
     
-# === УПРАВЛЕНИЕ ЧЕРНОВИКАМИ ===
-st.markdown("---")
-st.subheader("💾 Работа с черновиками")
+    # === КНОПКИ ФОРМЫ ===
+    col1, col2 = st.columns(2)
+    with col1:
+        save_draft_clicked = st.form_submit_button("💾 Сохранить черновик", type="secondary")
+    with col2:
+        submitted = st.form_submit_button("📥 Создать отчёт", type="primary")
+
+# === ОБРАБОТКА КНОПОК (ВНЕ ФОРМЫ!) ===
+if save_draft_clicked:
+    # Собираем данные из текущей формы
+    data = {
+        "report_title": report_title,
+        "project": project,
+        "app_type": app_type,
+        "version": version,
+        "test_period": test_period,
+        "report_date": report_date,
+        "engineer": engineer,
+        "release_status": release_status,
+        "s1": s1,
+        "s2": s2,
+        "total_tc": total_tc,
+        "pass": pass_tc,
+        "fail": fail_tc,
+        "device_browser": device_browser,
+        "os_platform": os_platform,
+        "build": build,
+        "env_url": env_url.strip(),
+        "tools": tools,
+        "methodology": methodology,
+        "risk": risk,
+        "recommendation": recommendation,
+        "consequences": consequences,
+        "limitations": limitations,
+        "conclusion": conclusion,
+        "recommendations_detailed": recommendations_detailed,
+        "role": role,
+        "fullname": fullname,
+        "signature_date": signature_date,
+    }
     
-col_save, col_load = st.columns([1, 2])
+    draft_json = save_draft(data, module_data_list, defects)
+    st.session_state.draft_to_download = draft_json
+    st.session_state.draft_filename = f"черновик_{datetime.now().strftime('%d%m%Y_%H%M%S')}.json"
+    st.success("✅ Черновик подготовлен к скачиванию!")
+    st.rerun()
 
-with col_save:
-    save_draft_clicked = st.form_submit_button("💾 Сохранить черновик", type="secondary")
-    if save_draft_clicked:
-        # Собираем данные из текущей формы
-        data = {
-            "report_title": report_title,
-            "project": project,
-            "app_type": app_type,
-            "version": version,
-            "test_period": test_period,
-            "report_date": report_date,
-            "engineer": engineer,
-            "release_status": release_status,
-            "s1": s1,
-            "s2": s2,
-            "total_tc": total_tc,
-            "pass": pass_tc,
-            "fail": fail_tc,
-            "device_browser": device_browser,
-            "os_platform": os_platform,
-            "build": build,
-            "env_url": env_url.strip(),
-            "tools": tools,
-            "methodology": methodology,
-            "risk": risk,
-            "recommendation": recommendation,
-            "consequences": consequences,
-            "limitations": limitations,
-            "conclusion": conclusion,
-            "recommendations_detailed": recommendations_detailed,
-            "role": role,
-            "fullname": fullname,
-            "signature_date": signature_date,
-        }
-        
-        draft_json = save_draft(data, module_data_list, defects)
-        st.session_state.draft_to_download = draft_json
-        st.session_state.draft_filename = f"черновик_{datetime.now().strftime('%d%m%Y_%H%M%S')}.json"
-        st.success("✅ Черновик подготовлен к скачиванию!")
-        st.rerun()
-
-with col_load:
-    uploaded_file = st.file_uploader(
-        "⬆️ Загрузить черновик (.json)",
-        type=["json"],
-        label_visibility="collapsed",
-        key="draft_uploader"
-    )
-    if uploaded_file is not None:
-        content = uploaded_file.read().decode("utf-8")
-        restored_data, restored_modules, restored_defects, saved_at = load_draft(content)
-        if restored_data is not None:
-            # Сохраняем восстановленные данные в session_state
-            st.session_state.draft_data = restored_data
-            st.session_state.draft_modules = restored_modules
-            st.session_state.draft_defects = restored_defects
-            st.session_state.draft_saved_at = saved_at
-            st.rerun()  # Перезагружаем страницу
-
-# === КНОПКА СКАЧИВАНИЯ ЧЕРНОВИКА (ВНЕ ФОРМЫ!) ===
+# Кнопка скачивания черновика (вне формы)
 if "draft_to_download" in st.session_state and st.session_state.draft_to_download is not None:
     st.download_button(
         "⬇️ Скачать черновик",
