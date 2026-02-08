@@ -14,7 +14,7 @@ import json
 from datetime import datetime
 import numpy as np
 
-# === ФУНКЦИИ ДЛЯ РАБОТЫ С ЧЕРНОВИКАМИ ===
+# === ФУНКЦИИ ДЛЯ РАБОТЫ С ЧЕРНОВИКАМИ (безопасные) ===
 def save_draft(data, module_data_list, defects_df):
     """Сохраняет данные формы в структуру для черновика"""
     draft = {
@@ -1017,6 +1017,7 @@ if uploaded_file is not None:
         st.rerun()
 
 # === ПОДГОТОВКА ДАННЫХ ДЛЯ ФОРМЫ ===
+# Инициализация значений по умолчанию или из черновика
 if "draft_data" in st.session_state and st.session_state.draft_data is not None:
     draft_data = st.session_state.draft_data
     draft_modules = st.session_state.draft_modules
@@ -1154,7 +1155,7 @@ with st.form("main_form"):
     st.subheader("4. Результаты по модулям")
     module_data_list = []
     
-    for i, mod in enumerate(default_modules):
+    for i, mod in enumerate(default_modules if "draft_modules" not in st.session_state else draft_modules):
         with st.expander(f"Модуль {i+1}: {mod['title']}", expanded=False):
             title = st.text_input(f"Название модуля {i+1}", mod["title"], key=f"title_{i}")
             df_edited = st.data_editor(
